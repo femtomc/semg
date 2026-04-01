@@ -64,8 +64,11 @@ class _CExtractorBase:
         is_cpp: bool,
     ) -> None:
         for child in root.children:
-            # Descend into preprocessor conditionals transparently
-            if child.type in ("preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif"):
+            # Descend into preprocessor conditionals and linkage specs transparently
+            if child.type in ("preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif", "linkage_specification"):
+                self._walk_top_level(child, parent_name, file_path, nodes, edges, is_cpp)
+                continue
+            if child.type == "declaration_list":
                 self._walk_top_level(child, parent_name, file_path, nodes, edges, is_cpp)
                 continue
             if child.type == "function_definition":
