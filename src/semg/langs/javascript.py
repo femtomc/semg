@@ -90,6 +90,7 @@ class _JSExtractorBase:
             type=NodeType.CLASS,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             docstring=self._get_jsdoc(node),
         ))
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
@@ -145,6 +146,7 @@ class _JSExtractorBase:
             type=NodeType.METHOD,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             docstring=self._get_jsdoc(node),
             metadata={"metrics": metrics.to_dict()},
         ))
@@ -176,6 +178,7 @@ class _JSExtractorBase:
             type=NodeType.FUNCTION,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             docstring=self._get_jsdoc(node),
             metadata={"metrics": metrics.to_dict()},
         ))
@@ -210,6 +213,7 @@ class _JSExtractorBase:
                 type=NodeType.CONSTANT,
                 file=file_path,
                 line=child.start_point[0] + 1,
+                end_line=child.end_point[0] + 1,
             ))
             out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
@@ -232,6 +236,7 @@ class _JSExtractorBase:
             type=NodeType.INTERFACE,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
         ))
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 

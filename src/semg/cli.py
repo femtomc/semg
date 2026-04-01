@@ -347,7 +347,11 @@ def about(name: str, depth: int, fmt: str | None) -> None:
     lines: list[str] = []
 
     if node.file:
-        loc = node.file + (f":{node.line}" if node.line else "")
+        loc = node.file
+        if node.line is not None:
+            loc += f":{node.line}"
+            if node.end_line is not None and node.end_line != node.line:
+                loc += f"-{node.end_line}"
         lines.append(f"[dim]file:[/]  {loc}")
     if node.docstring:
         lines.append(f"[dim]doc:[/]   {node.docstring.split(chr(10))[0]}")
@@ -579,6 +583,8 @@ def show(name: str, fmt: str | None) -> None:
         loc = node.file
         if node.line is not None:
             loc += f":{node.line}"
+            if node.end_line is not None and node.end_line != node.line:
+                loc += f"-{node.end_line}"
         lines.append(f"[dim]file:[/]  {loc}")
     if node.docstring:
         doc = node.docstring.split("\n")[0]
@@ -642,6 +648,8 @@ def list_nodes(type_: str | None, fmt: str | None) -> None:
             loc = node.file
             if node.line is not None:
                 loc += f":{node.line}"
+                if node.end_line is not None and node.end_line != node.line:
+                    loc += f"-{node.end_line}"
         doc = (node.docstring or "").split("\n")[0][:40]
         table.add_row(_type_badge(node.type.value), node.name, loc, doc)
 

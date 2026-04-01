@@ -55,6 +55,7 @@ class Node:
     type: NodeType
     file: str | None = None
     line: int | None = None
+    end_line: int | None = None
     docstring: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -64,6 +65,8 @@ class Node:
             d["file"] = self.file
         if self.line is not None:
             d["line"] = self.line
+        if self.end_line is not None:
+            d["end_line"] = self.end_line
         if self.docstring is not None:
             d["docstring"] = self.docstring
         if self.metadata:
@@ -80,6 +83,7 @@ class Node:
             type=NodeType(d["type"]),
             file=d.get("file"),
             line=d.get("line"),
+            end_line=d.get("end_line"),
             docstring=d.get("docstring"),
             metadata=d.get("metadata", {}),
         )

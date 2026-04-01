@@ -85,14 +85,14 @@ class ZigExtractor:
         enum_node = _find_child(node, "enum_declaration")
         if enum_node is not None:
             qualified = f"{parent_name}.{var_name}"
-            nodes.append(Node(name=qualified, type=NodeType.TYPE, file=file_path, line=node.start_point[0] + 1))
+            nodes.append(Node(name=qualified, type=NodeType.TYPE, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
             edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
             return
 
         # UPPER_CASE = constant
         if var_name.isupper() or (var_name[0].isupper() and "_" in var_name and var_name == var_name.upper()):
             qualified = f"{parent_name}.{var_name}"
-            nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1))
+            nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
             edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_struct(
@@ -110,6 +110,7 @@ class ZigExtractor:
             type=NodeType.CLASS,  # Zig structs map to class in semg
             file=file_path,
             line=struct_node.start_point[0] + 1,
+            end_line=struct_node.end_point[0] + 1,
         ))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
@@ -145,6 +146,7 @@ class ZigExtractor:
             type=NodeType.METHOD if is_method else NodeType.FUNCTION,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             metadata={"metrics": metrics.to_dict()},
         ))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
@@ -178,6 +180,7 @@ class ZigExtractor:
             type=NodeType.FUNCTION,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             metadata={"test": True},
         ))
         edges.append(Edge(source=module_name, target=qualified, rel=RelType.CONTAINS))

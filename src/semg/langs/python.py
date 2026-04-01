@@ -82,6 +82,7 @@ class PythonExtractor:
             type=NodeType.CLASS,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             docstring=self._get_docstring(node),
         ))
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
@@ -153,6 +154,7 @@ class PythonExtractor:
             type=NodeType.METHOD if is_method else NodeType.FUNCTION,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             docstring=self._get_docstring(node),
             metadata={"metrics": metrics.to_dict()},
         ))
@@ -268,6 +270,7 @@ class PythonExtractor:
                 type=NodeType.CONSTANT,
                 file=file_path,
                 line=child.start_point[0] + 1,
+                end_line=child.end_point[0] + 1,
             ))
             out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 

@@ -101,7 +101,7 @@ class _CExtractorBase:
         ns_name = name_node.text.decode()
         qualified = f"{parent_name}.{ns_name}"
 
-        nodes.append(Node(name=qualified, type=NodeType.PACKAGE, file=file_path, line=node.start_point[0] + 1))
+        nodes.append(Node(name=qualified, type=NodeType.PACKAGE, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         body = _find_child(node, "declaration_list")
@@ -122,7 +122,7 @@ class _CExtractorBase:
         class_name = name_node.text.decode()
         qualified = f"{parent_name}.{class_name}"
 
-        nodes.append(Node(name=qualified, type=NodeType.CLASS, file=file_path, line=node.start_point[0] + 1))
+        nodes.append(Node(name=qualified, type=NodeType.CLASS, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Inheritance
@@ -161,7 +161,7 @@ class _CExtractorBase:
         struct_name = name_node.text.decode()
         qualified = f"{parent_name}.{struct_name}"
 
-        nodes.append(Node(name=qualified, type=NodeType.CLASS, file=file_path, line=node.start_point[0] + 1))
+        nodes.append(Node(name=qualified, type=NodeType.CLASS, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_define(
@@ -180,7 +180,7 @@ class _CExtractorBase:
         if not name.isupper():
             return
         qualified = f"{parent_name}.{name}"
-        nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1))
+        nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_function(
@@ -205,6 +205,7 @@ class _CExtractorBase:
             type=NodeType.METHOD if is_method else NodeType.FUNCTION,
             file=file_path,
             line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
             metadata={"metrics": metrics.to_dict()},
         ))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))

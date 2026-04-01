@@ -25,6 +25,8 @@ class SemGraph:
                 existing.file = node.file
             if node.line is not None:
                 existing.line = node.line
+            if node.end_line is not None:
+                existing.end_line = node.end_line
             if node.docstring is not None:
                 existing.docstring = node.docstring
             if node.metadata:
