@@ -294,10 +294,9 @@ class PythonExtractor:
                             metadata={"unresolved": True},
                         ))
             elif child.type == "import_from_statement":
-                # from X import Y
-                mod_node = child.child_by_field_name("module_name")
-                if mod_node is not None:
-                    target = mod_node.text.decode()
+                # from X import Y — handles both absolute and relative imports
+                target = self._resolve_import_from(child, module_name)
+                if target is not None:
                     out_edges.append(Edge(
                         source=module_name,
                         target=target,
@@ -306,6 +305,60 @@ class PythonExtractor:
                     ))
             elif child.type == "future_import_statement":
                 pass  # skip `from __future__ import ...`
+
+    def _resolve_import_from(self, node: TSNode, module_name: str) -> str | None:
+        """Resolve a from...import statement to a target module name.
+
+        Handles:
+          from X.Y import Z        -> "X.Y"
+          from .sibling import Z   -> "parent.sibling" (relative)
+          from ..uncle import Z    -> "grandparent.uncle" (relative)
+          from . import Z          -> "parent" (relative, package itself)
+        """
+        # Check for relative import first
+        for child in node.children:
+            if child.type == "relative_import":
+                return self._resolve_relative_import(child, module_name)
+
+        # Absolute import: from X.Y import Z
+        mod_node = node.child_by_field_name("module_name")
+        if mod_node is not None:
+            return mod_node.text.decode()
+        return None
+
+    def _resolve_relative_import(self, rel_node: TSNode, module_name: str) -> str | None:
+        """Resolve a relative_import node using the current module name.
+
+        relative_import has:
+          import_prefix (the dots: ".", "..", etc.)
+          dotted_name (optional: the module after the dots)
+        """
+        prefix_node = None
+        dotted_node = None
+        for child in rel_node.children:
+            if child.type == "import_prefix":
+                prefix_node = child
+            elif child.type == "dotted_name":
+                dotted_node = child
+
+        # Count dots for relative depth
+        dot_count = len(prefix_node.text.decode()) if prefix_node else 0
+        if dot_count == 0:
+            return None
+
+        # Walk up the module path: "bellman.cli.commands" with 1 dot -> "bellman.cli"
+        parts = module_name.split(".")
+        if dot_count > len(parts):
+            return None  # too many dots, can't resolve
+
+        base_parts = parts[:-dot_count]
+        if dotted_node is not None:
+            target = ".".join(base_parts + [dotted_node.text.decode()])
+        else:
+            # from . import X -> import from parent package
+            target = ".".join(base_parts) if base_parts else None
+
+        return target
 
     def _get_docstring(self, node: TSNode) -> str | None:
         """Extract docstring from a class or function definition."""

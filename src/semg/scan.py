@@ -21,11 +21,17 @@ DEFAULT_EXCLUDES = [
     ".mypy_cache",
     ".pytest_cache",
     ".ruff_cache",
+    ".hypothesis",
     ".tox",
     "dist",
     "build",
     "*.egg-info",
     ".semg",
+    "site-packages",
+    "vendor",
+    "third_party",
+    "zig-cache",
+    "zig-out",
 ]
 
 

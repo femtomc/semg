@@ -251,6 +251,55 @@ def test_scan_imports(tmp_path):
 
 
 @needs_tree_sitter
+def test_scan_relative_imports(tmp_path):
+    """from .sibling import X should resolve to parent.sibling."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "errors.py").write_text("class AppError(Exception): pass\n")
+    (pkg / "core.py").write_text("""\
+from .errors import AppError
+from . import errors
+
+def main():
+    pass
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    edges = graph.outgoing("app.core", rel=RelType.IMPORTS)
+    targets = {e.target for e in edges}
+    assert "app.errors" in targets
+
+
+@needs_tree_sitter
+def test_scan_relative_import_parent(tmp_path):
+    """from ..utils import X should resolve to grandparent.utils."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    sub = pkg / "sub"
+    sub.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (sub / "__init__.py").touch()
+    (pkg / "utils.py").write_text("def helper(): pass\n")
+    (sub / "deep.py").write_text("""\
+from ..utils import helper
+
+def do_stuff():
+    helper()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    edges = graph.outgoing("app.sub.deep", rel=RelType.IMPORTS)
+    targets = {e.target for e in edges}
+    assert "app.utils" in targets
+
+
+@needs_tree_sitter
 def test_scan_package_hierarchy(tmp_path):
     root = _write_python_project(tmp_path)
     init_project(root)
