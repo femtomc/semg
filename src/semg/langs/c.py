@@ -340,7 +340,7 @@ class CHeaderExtractor(_CExtractorBase):
 
 
 class CppExtractor(_CExtractorBase):
-    extensions = [".cpp", ".cc", ".cxx"]
+    extensions = [".cpp", ".cc", ".cxx", ".cu"]
     branch_map = C_BRANCH_MAP
 
     def __init__(self) -> None:
@@ -352,7 +352,7 @@ class CppExtractor(_CExtractorBase):
 
 
 class CppHeaderExtractor(_CExtractorBase):
-    extensions = [".hpp", ".hxx"]
+    extensions = [".hpp", ".hxx", ".cuh"]
     branch_map = C_BRANCH_MAP
 
     def __init__(self) -> None:

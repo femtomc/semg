@@ -104,7 +104,7 @@ def file_to_module_name(file_path: str, root: Path) -> str:
     return ".".join(parts)
 
 
-_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".zig", ".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx")
+_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".zig", ".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".cu", ".cuh")
 
 
 def _strip_extension(filename: str) -> str | None:
