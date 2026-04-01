@@ -32,7 +32,7 @@ click.rich_click.STYLE_SWITCH = "bold green"
 click.rich_click.STYLE_METAVAR = "dim"
 click.rich_click.COMMAND_GROUPS = {
     "semg": [
-        {"name": "Explore", "commands": ["about", "impact", "between", "overview"]},
+        {"name": "Explore", "commands": ["about", "impact", "between", "overview", "diff"]},
         {"name": "Inspect", "commands": ["show", "list", "status", "query", "validate"]},
         {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan"]},
         {"name": "Export", "commands": ["export"]},
@@ -767,6 +767,106 @@ def validate() -> None:
         for issue in issues:
             err_console.print(f"  [dim]-[/] {issue}")
         sys.exit(EXIT_VALIDATION)
+
+
+# --- Diff ---
+
+
+@main.command()
+@click.argument("ref", default="HEAD")
+@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+def diff(ref: str, fmt: str | None) -> None:
+    """What changed structurally? Compare graph against a git ref.
+
+    Defaults to comparing against HEAD (last commit). Use any git ref:
+    HEAD~1, main, a commit hash, etc.
+    """
+    import json as json_mod
+
+    from semg.diff import GraphDiff, diff_graphs, load_graph_from_git
+
+    graph, root = _load()
+    fmt = _auto_fmt(fmt)
+
+    old_graph = load_graph_from_git(root, ref)
+    if old_graph is None:
+        if fmt == "json":
+            # No baseline — treat everything as added
+            old_graph = SemGraph()
+        else:
+            console.print(f"[dim]No graph found at ref [bold]{ref}[/bold]. Showing full graph as new.[/]")
+            old_graph = SemGraph()
+
+    result = diff_graphs(old_graph, graph)
+
+    if fmt == "json":
+        data: dict = {
+            "ref": ref,
+            "added_nodes": [n.name for n in result.added_nodes],
+            "removed_nodes": [n.name for n in result.removed_nodes],
+            "changed_nodes": [
+                {"name": node.name, "changes": [{"field": c.field, "old": c.old, "new": c.new} for c in changes]}
+                for node, changes in result.changed_nodes
+            ],
+            "added_edges": [{"source": e.source, "rel": e.rel.value, "target": e.target} for e in result.added_edges],
+            "removed_edges": [{"source": e.source, "rel": e.rel.value, "target": e.target} for e in result.removed_edges],
+            "summary": {
+                "nodes_added": len(result.added_nodes),
+                "nodes_removed": len(result.removed_nodes),
+                "nodes_changed": len(result.changed_nodes),
+                "edges_added": len(result.added_edges),
+                "edges_removed": len(result.removed_edges),
+            },
+        }
+        click.echo(json_mod.dumps(data, indent=2))
+        return
+
+    if result.is_empty:
+        console.print(f"[dim]No structural changes vs {ref}.[/]")
+        return
+
+    console.print(f"[bold]Diff vs {ref}[/]\n")
+
+    if result.added_nodes:
+        console.print(f"[green]+[/] [bold]{len(result.added_nodes)} node(s) added[/]")
+        for node in result.added_nodes:
+            console.print(f"  [green]+[/] [{_type_badge(node.type.value)}] {node.name}")
+
+    if result.removed_nodes:
+        console.print(f"[red]-[/] [bold]{len(result.removed_nodes)} node(s) removed[/]")
+        for node in result.removed_nodes:
+            console.print(f"  [red]-[/] [{_type_badge(node.type.value)}] {node.name}")
+
+    if result.changed_nodes:
+        console.print(f"[yellow]~[/] [bold]{len(result.changed_nodes)} node(s) changed[/]")
+        for node, changes in result.changed_nodes:
+            console.print(f"  [yellow]~[/] {node.name}")
+            for c in changes:
+                console.print(f"      {c.field}: [red]{c.old}[/] → [green]{c.new}[/]")
+
+    if result.added_edges:
+        console.print(f"[green]+[/] [bold]{len(result.added_edges)} edge(s) added[/]")
+        for e in result.added_edges[:20]:
+            console.print(f"  [green]+[/] {e.source} [dim]--{_rel_style(e.rel.value)}-->[/] {e.target}")
+        if len(result.added_edges) > 20:
+            console.print(f"  [dim]... and {len(result.added_edges) - 20} more[/]")
+
+    if result.removed_edges:
+        console.print(f"[red]-[/] [bold]{len(result.removed_edges)} edge(s) removed[/]")
+        for e in result.removed_edges[:20]:
+            console.print(f"  [red]-[/] {e.source} [dim]--{_rel_style(e.rel.value)}-->[/] {e.target}")
+        if len(result.removed_edges) > 20:
+            console.print(f"  [dim]... and {len(result.removed_edges) - 20} more[/]")
+
+    # Summary line
+    parts = []
+    if result.added_nodes:
+        parts.append(f"[green]+{len(result.added_nodes)}[/]")
+    if result.removed_nodes:
+        parts.append(f"[red]-{len(result.removed_nodes)}[/]")
+    if result.changed_nodes:
+        parts.append(f"[yellow]~{len(result.changed_nodes)}[/]")
+    console.print(f"\n[dim]Nodes: {', '.join(parts)} | Edges: +{len(result.added_edges)} -{len(result.removed_edges)}[/]")
 
 
 # --- Scan ---
