@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from semg.graph import SemGraph
 from semg.langs import ExtractResult, get_extractor, load_extractors
@@ -31,8 +33,11 @@ DEFAULT_EXCLUDES = [
 class ScanStats:
     files: int = 0
     nodes_added: int = 0
+    nodes_removed: int = 0
     edges_added: int = 0
+    edges_removed: int = 0
     skipped_edges: int = 0
+    orphaned_manual_edges: list[dict[str, str]] = field(default_factory=list)
     lang_counts: dict[str, int] = field(default_factory=dict)
     type_counts: dict[str, int] = field(default_factory=dict)
 
@@ -149,7 +154,8 @@ def scan_paths(
 
     files = collect_files(paths, root, excludes)
 
-    # Clean phase: remove nodes from files about to be scanned
+    # Smart clean phase: only remove scan-sourced nodes from files about to be rescanned.
+    # Collect orphaned manual edges before cascade-deleting nodes.
     if clean:
         rel_paths = set()
         for fpath in files:
@@ -159,9 +165,22 @@ def scan_paths(
                 rel_paths.add(str(fpath))
         to_remove = [
             name for name, node in list(graph.nodes.items())
-            if node.file is not None and node.file in rel_paths
+            if node.file is not None
+            and node.file in rel_paths
+            and node.metadata.get("source") == "scan"
         ]
         for name in to_remove:
+            # Before removing, check for manual edges that will be orphaned
+            for edge in graph.incoming(name) + graph.outgoing(name):
+                if edge.metadata.get("source") == "manual":
+                    stats.orphaned_manual_edges.append({
+                        "source": edge.source,
+                        "rel": edge.rel.value,
+                        "target": edge.target,
+                        "reason": f"{'source' if edge.source == name else 'target'} node removed",
+                    })
+                    stats.edges_removed += 1
+            stats.nodes_removed += 1
             graph.remove_node(name)
 
     # Extract phase: collect all nodes and edges
@@ -209,6 +228,10 @@ def scan_paths(
                 all_nodes.append(Node(name=pkg_name, type=NodeType.PACKAGE))
                 known_names.add(pkg_name)
 
+    # Stamp provenance on all scan-produced nodes
+    for node in all_nodes:
+        node.metadata["source"] = "scan"
+
     # Populate nodes (upsert)
     for node in all_nodes:
         graph.add_node(node)
@@ -224,15 +247,17 @@ def scan_paths(
             if graph.get_node(parent) is not None and graph.get_node(child) is not None:
                 edge_key = (parent, RelType.CONTAINS.value, child)
                 if edge_key not in graph.edges:
-                    graph.add_edge(Edge(source=parent, target=child, rel=RelType.CONTAINS))
+                    graph.add_edge(Edge(
+                        source=parent, target=child, rel=RelType.CONTAINS,
+                        metadata={"source": "scan"},
+                    ))
                     stats.edges_added += 1
 
-    # Resolve and add edges
+    # Resolve and add edges (stamp provenance)
     for edge in all_edges:
         is_unresolved = edge.metadata.get("unresolved", False)
 
         if is_unresolved:
-            # Try to resolve the target
             resolved_target = _resolve_edge_target(graph, edge.target)
             if resolved_target is None:
                 stats.skipped_edges += 1
@@ -243,6 +268,9 @@ def scan_paths(
                 rel=edge.rel,
                 metadata={k: v for k, v in edge.metadata.items() if k != "unresolved"},
             )
+
+        # Stamp provenance
+        edge.metadata["source"] = "scan"
 
         # Verify both endpoints exist
         if edge.source not in graph.nodes or edge.target not in graph.nodes:
@@ -264,6 +292,37 @@ def scan_paths(
             })
 
     return stats
+
+
+def changed_files(root: Path, since: str = "HEAD") -> list[Path]:
+    """Get files changed since a git ref, filtered to supported extensions."""
+    try:
+        # Changed tracked files
+        diff = subprocess.run(
+            ["git", "diff", "--name-only", since],
+            capture_output=True, text=True, cwd=root,
+        )
+        # Untracked new files
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True, text=True, cwd=root,
+        )
+    except FileNotFoundError:
+        return []  # git not installed
+
+    all_files: set[str] = set()
+    if diff.returncode == 0:
+        all_files.update(f.strip() for f in diff.stdout.splitlines() if f.strip())
+    if untracked.returncode == 0:
+        all_files.update(f.strip() for f in untracked.stdout.splitlines() if f.strip())
+
+    result: list[Path] = []
+    for f in all_files:
+        if _strip_extension(Path(f).name) is not None:
+            fpath = root / f
+            if fpath.exists():
+                result.append(fpath)
+    return sorted(result)
 
 
 def _resolve_edge_target(graph: SemGraph, target: str) -> str | None:

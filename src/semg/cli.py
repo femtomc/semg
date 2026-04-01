@@ -155,13 +155,15 @@ def init() -> None:
 def add(type: str, name: str, file_: str | None, line: int | None, doc: str | None, meta: tuple[str, ...]) -> None:
     """Add a node to the graph."""
     graph, root = _load()
+    metadata = _parse_meta(meta)
+    metadata.setdefault("source", "manual")
     node = Node(
         name=name,
         type=NodeType(type),
         file=file_,
         line=line,
         docstring=doc,
-        metadata=_parse_meta(meta),
+        metadata=metadata,
     )
     graph.add_node(node)
     save_graph(graph, root)
@@ -178,7 +180,9 @@ def link(source: str, rel: str, target: str, meta: tuple[str, ...]) -> None:
     graph, root = _load()
     source = _resolve_or_exit(graph, source)
     target = _resolve_or_exit(graph, target)
-    edge = Edge(source=source, target=target, rel=RelType(rel), metadata=_parse_meta(meta))
+    metadata = _parse_meta(meta)
+    metadata.setdefault("source", "manual")
+    edge = Edge(source=source, target=target, rel=RelType(rel), metadata=metadata)
     try:
         graph.add_edge(edge)
     except NodeNotFoundError as e:
@@ -874,13 +878,20 @@ def diff(ref: str, fmt: str | None) -> None:
 
 @main.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option("--clean", is_flag=True, help="Remove existing nodes from scanned files before repopulating")
+@click.option("--clean", is_flag=True, help="Remove scan-sourced nodes from scanned files before repopulating")
+@click.option("--changed", is_flag=True, help="Only rescan files changed since last commit (implies --clean)")
+@click.option("--since", default=None, help="Only rescan files changed since REF (implies --clean)")
 @click.option("--exclude", multiple=True, help="Additional exclude patterns (repeatable)")
 @click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
-def scan(paths: tuple[str, ...], clean: bool, exclude: tuple[str, ...], fmt: str | None) -> None:
-    """Scan source files with tree-sitter and populate the graph."""
+def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, exclude: tuple[str, ...], fmt: str | None) -> None:
+    """Scan source files with tree-sitter and populate the graph.
+
+    Use --changed to only rescan files modified since the last commit.
+    Use --since REF to rescan files changed since a specific git ref.
+    Both imply --clean (scoped to changed files only).
+    """
     try:
-        from semg.scan import scan_paths
+        from semg.scan import changed_files, scan_paths
     except ImportError:
         err_console.print(
             "[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install semg\\[scan][/]"
@@ -889,7 +900,22 @@ def scan(paths: tuple[str, ...], clean: bool, exclude: tuple[str, ...], fmt: str
 
     graph, root = _load()
 
-    scan_dirs = [Path(p).resolve() for p in paths] if paths else [Path.cwd().resolve()]
+    if changed or since:
+        ref = since or "HEAD"
+        file_list = changed_files(root, ref)
+        if not file_list:
+            fmt = _auto_fmt(fmt)
+            if fmt == "json":
+                import json
+                click.echo(json.dumps({"files": 0, "message": f"no supported files changed since {ref}"}))
+            else:
+                console.print(f"[dim]No supported files changed since {ref}.[/]")
+            return
+        scan_dirs = file_list
+        clean = True  # --changed implies --clean
+    else:
+        scan_dirs = [Path(p).resolve() for p in paths] if paths else [Path.cwd().resolve()]
+
     stats = scan_paths(graph, root, scan_dirs, clean=clean, excludes=list(exclude) or None)
     save_graph(graph, root)
     fmt = _auto_fmt(fmt)
@@ -897,14 +923,19 @@ def scan(paths: tuple[str, ...], clean: bool, exclude: tuple[str, ...], fmt: str
     if fmt == "json":
         import json
 
-        click.echo(json.dumps({
+        data: dict = {
             "files": stats.files,
             "nodes_added": stats.nodes_added,
+            "nodes_removed": stats.nodes_removed,
             "edges_added": stats.edges_added,
+            "edges_removed": stats.edges_removed,
             "skipped_edges": stats.skipped_edges,
             "languages": stats.lang_counts,
             "types": stats.type_counts,
-        }, indent=2))
+        }
+        if stats.orphaned_manual_edges:
+            data["orphaned_manual_edges"] = stats.orphaned_manual_edges
+        click.echo(json.dumps(data, indent=2))
     else:
         langs = ", ".join(f"{v} {k}" for k, v in sorted(stats.lang_counts.items()))
         console.print(f"[green]Scanned[/] {stats.files} files ({langs})")
@@ -913,11 +944,16 @@ def scan(paths: tuple[str, ...], clean: bool, exclude: tuple[str, ...], fmt: str
         table.add_column("Label", style="dim")
         table.add_column("Value")
         type_parts = ", ".join(f"{v} {_type_badge(k)}" for k, v in sorted(stats.type_counts.items()))
-        table.add_row("Nodes", type_parts)
-        table.add_row("Edges", str(stats.edges_added))
+        table.add_row("Nodes", f"+{stats.nodes_added} -{stats.nodes_removed}" if stats.nodes_removed else type_parts)
+        table.add_row("Edges", f"+{stats.edges_added} -{stats.edges_removed}" if stats.edges_removed else str(stats.edges_added))
         if stats.skipped_edges:
             table.add_row("Skipped", f"{stats.skipped_edges} unresolved")
         console.print(table)
+
+        if stats.orphaned_manual_edges:
+            console.print(f"\n[yellow]Warning:[/] {len(stats.orphaned_manual_edges)} manual edge(s) orphaned:")
+            for oe in stats.orphaned_manual_edges:
+                console.print(f"  {oe['source']} [dim]--{oe['rel']}-->[/] {oe['target']} [dim]({oe['reason']})[/]")
 
 
 # --- Batch ---
@@ -962,24 +998,28 @@ def batch(fmt: str | None) -> None:
         op = cmd.get("op")
         try:
             if op == "add":
+                metadata = cmd.get("metadata", {})
+                metadata.setdefault("source", "manual")
                 node = Node(
                     name=cmd["name"],
                     type=NodeType(cmd["type"]),
                     file=cmd.get("file"),
                     line=cmd.get("line"),
                     docstring=cmd.get("doc"),
-                    metadata=cmd.get("metadata", {}),
+                    metadata=metadata,
                 )
                 graph.add_node(node)
                 stats["ok"] += 1
                 stats["ops"].append({"line": line_no, "op": "add", "name": cmd["name"]})
 
             elif op == "link":
+                metadata = cmd.get("metadata", {})
+                metadata.setdefault("source", "manual")
                 edge = Edge(
                     source=cmd["source"],
                     target=cmd["target"],
                     rel=RelType(cmd["rel"]),
-                    metadata=cmd.get("metadata", {}),
+                    metadata=metadata,
                 )
                 graph.add_edge(edge)
                 stats["ok"] += 1
