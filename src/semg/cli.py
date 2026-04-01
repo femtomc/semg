@@ -1044,13 +1044,27 @@ def diff(ref: str, fmt: str | None) -> None:
 
 @main.command()
 @click.option("--top", "top_n", default=10, type=int, help="Number of top entries to show per ranking")
+@click.option("--module", "module_filter", default=None, help="Scope analysis to nodes under this module/package prefix")
+@click.option("--summary", is_flag=True, help="Show only hotspots and key findings, skip full listings")
 @click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
-def analyze(top_n: int, fmt: str | None) -> None:
-    """Deep architectural analysis — graph metrics, OO metrics, and structural health.
+def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | None) -> None:
+    """Deep architectural analysis with hotspot detection.
 
-    Runs cycle detection, PageRank, betweenness centrality, k-core decomposition,
-    CK class metrics (WMC, CBO, RFC, LCOM4, DIT, NOC), Martin's package metrics
-    (Instability, Abstractness, Distance), and SDP violation detection.
+    \b
+    Runs: cycle detection, PageRank, betweenness centrality, k-core,
+    CK class metrics (WMC/CBO/RFC/LCOM4/DIT/NOC), Martin's package
+    metrics (I/A/D), SDP violations, and synthesized hotspot ranking.
+
+    \b
+    Examples:
+      semg analyze                        # full analysis
+      semg analyze --module bellman       # scope to bellman.* nodes
+      semg analyze --summary --top 5     # just hotspots and key findings
+      semg analyze --format json         # structured output for agents
+
+    \b
+    JSON output keys: hotspots, graph, pagerank, betweenness,
+    kcore (with members), classes, modules, sdp_violations
     """
     import json as json_mod
 
@@ -1058,6 +1072,20 @@ def analyze(top_n: int, fmt: str | None) -> None:
 
     graph, _root = _load()
     fmt = _auto_fmt(fmt)
+
+    # Scope to a module prefix if requested
+    if module_filter:
+        from semg.query import subgraph as _subgraph
+        # Build a scoped graph: all nodes whose name starts with the prefix
+        scoped = SemGraph()
+        prefix = module_filter if module_filter.endswith(".") else module_filter + "."
+        for node in graph.all_nodes():
+            if node.name == module_filter or node.name.startswith(prefix):
+                scoped.add_node(node)
+        for edge_obj in graph.all_edges():
+            if edge_obj.source in scoped.nodes and edge_obj.target in scoped.nodes:
+                scoped.add_edge(edge_obj)
+        graph = scoped
 
     use_progress = fmt == "text" and sys.stdout.isatty()
     if use_progress:
@@ -1096,19 +1124,68 @@ def analyze(top_n: int, fmt: str | None) -> None:
     martin_data = oo_metrics.martin_metrics(graph)
     _step("Checking SDP violations...")
     sdp = oo_metrics.sdp_violations(graph)
+    _step("Computing hotspots...")
 
     if use_progress:
         progress.stop()
 
     # Summaries
     max_layer = max(layers.values()) if layers else 0
-    core_nodes = [n for n, k in kc.items() if k == max(kc.values())] if kc else []
+    max_k = max(kc.values()) if kc else 0
+    core_members = sorted(n for n, k in kc.items() if k == max_k) if kc else []
     pr_top = sorted(pr.items(), key=lambda x: x[1], reverse=True)[:top_n]
     bc_top = sorted(bc.items(), key=lambda x: x[1], reverse=True)[:top_n]
 
+    # --- Hotspot synthesis ---
+    # Composite score: normalize and combine PageRank, betweenness, WMC, CBO, LCOM4
+    hotspots: list[dict] = []
+    # Collect class-level hotspots
+    for name in wmc_data:
+        score = 0.0
+        reasons: list[str] = []
+        w = wmc_data.get(name, 0)
+        c = cbo_data.get(name, 0)
+        l = lcom_data.get(name, 0)
+        r = rfc_data.get(name, 0)
+        b = bc.get(name, 0.0)
+        p = pr.get(name, 0.0)
+        if w > 20:
+            score += w / 10
+            reasons.append(f"high complexity (WMC={w})")
+        if c > 5:
+            score += c
+            reasons.append(f"high coupling (CBO={c})")
+        if l > 1:
+            score += l * 3
+            reasons.append(f"low cohesion (LCOM4={l})")
+        if r > 20:
+            score += r / 5
+            reasons.append(f"large response set (RFC={r})")
+        if b > 0.05:
+            score += b * 20
+            reasons.append(f"structural bottleneck (BC={b:.3f})")
+        if p > 0.02:
+            score += p * 50
+            reasons.append(f"high importance (PR={p:.4f})")
+        if reasons:
+            hotspots.append({"name": name, "type": "class", "score": round(score, 2), "reasons": reasons})
+
+    # Collect module-level hotspots (high distance from main sequence)
+    for name, m in martin_data.items():
+        if m["distance"] > 0.7:
+            hotspots.append({
+                "name": name, "type": "module", "score": round(m["distance"] * 5, 2),
+                "reasons": [f"far from main sequence (D={m['distance']}, I={m['instability']}, A={m['abstractness']})"],
+            })
+
+    hotspots.sort(key=lambda h: h["score"], reverse=True)
+
     if fmt == "json":
-        data = {
+        data: dict = {
+            "hotspots": hotspots[:top_n],
             "graph": {
+                "nodes": len(graph),
+                "edges": len(graph.all_edges()),
                 "cycles": cycles,
                 "cycle_count": len(cycles),
                 "max_layer": max_layer,
@@ -1117,25 +1194,40 @@ def analyze(top_n: int, fmt: str | None) -> None:
             },
             "pagerank": [{"name": n, "rank": round(r, 6)} for n, r in pr_top],
             "betweenness": [{"name": n, "centrality": round(c, 6)} for n, c in bc_top],
-            "kcore": {"max_coreness": max(kc.values()) if kc else 0, "core_size": len(core_nodes)},
-            "classes": {
+            "kcore": {"max_coreness": max_k, "core_size": len(core_members), "members": core_members[:top_n]},
+        }
+        if not summary:
+            data["classes"] = {
                 name: {
-                    "wmc": wmc_data.get(name, 0),
-                    "dit": dit_data.get(name, 0),
-                    "noc": noc_data.get(name, 0),
-                    "cbo": cbo_data.get(name, 0),
-                    "rfc": rfc_data.get(name, 0),
-                    "lcom4": lcom_data.get(name, 0),
+                    "wmc": wmc_data.get(name, 0), "dit": dit_data.get(name, 0),
+                    "noc": noc_data.get(name, 0), "cbo": cbo_data.get(name, 0),
+                    "rfc": rfc_data.get(name, 0), "lcom4": lcom_data.get(name, 0),
                 }
                 for name in sorted(wmc_data.keys())
-            },
-            "modules": martin_data,
-            "sdp_violations": sdp,
-        }
+            }
+            data["modules"] = martin_data
+        data["sdp_violations"] = sdp
         click.echo(json_mod.dumps(data, indent=2))
         return
 
     # --- Rich text output ---
+
+    scope_label = f" [dim](scoped to {module_filter})[/]" if module_filter else ""
+    console.print(f"\n[bold]Analysis[/]{scope_label} — {len(graph)} nodes, {len(graph.all_edges())} edges")
+
+    # Hotspots (always shown)
+    if hotspots:
+        console.print(f"\n[red bold]Hotspots[/] (top problem areas)")
+        hs_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
+        hs_table.add_column("#", style="dim", width=3)
+        hs_table.add_column("Name", style="bold")
+        hs_table.add_column("Score", justify="right")
+        hs_table.add_column("Issues")
+        for i, h in enumerate(hotspots[:top_n], 1):
+            hs_table.add_row(str(i), h["name"], str(h["score"]), "; ".join(h["reasons"]))
+        console.print(hs_table)
+    else:
+        console.print("\n[green]No hotspots detected[/]")
 
     # Cycles
     if cycles:
@@ -1147,7 +1239,24 @@ def analyze(top_n: int, fmt: str | None) -> None:
     else:
         console.print("\n[green]No circular dependencies[/]")
 
-    # Architecture layers
+    # SDP violations
+    if sdp:
+        console.print(f"\n[red bold]SDP Violations[/] ({len(sdp)})")
+        for v in sdp[:5]:
+            console.print(
+                f"  [red]-[/] {v['source']} [dim](I={v['source_instability']})[/]"
+                f" depends on {v['target']} [dim](I={v['target_instability']})[/]"
+            )
+    else:
+        console.print(f"\n[green]No SDP violations[/]")
+
+    if summary:
+        # Summary mode: just hotspots + cycles + violations, done
+        console.print(f"\n[dim]Architecture depth: {max_layer + 1} layers | Core: {len(core_members)} nodes (k={max_k}) | Bridges: {len(bridges)}[/]")
+        return
+
+    # --- Full output below (non-summary) ---
+
     console.print(f"\n[bold]Architecture Depth:[/] {max_layer + 1} layers")
 
     # PageRank
@@ -1160,7 +1269,7 @@ def analyze(top_n: int, fmt: str | None) -> None:
         pr_table.add_row(str(i), name, f"{rank:.4f}")
     console.print(pr_table)
 
-    # Betweenness (bottlenecks)
+    # Betweenness
     bc_nonzero = [(n, c) for n, c in bc_top if c > 0]
     if bc_nonzero:
         console.print(f"\n[bold]Structural Bottlenecks (Betweenness)[/]")
@@ -1171,6 +1280,14 @@ def analyze(top_n: int, fmt: str | None) -> None:
         for i, (name, cent) in enumerate(bc_nonzero[:top_n], 1):
             bc_table.add_row(str(i), name, f"{cent:.4f}")
         console.print(bc_table)
+
+    # K-core with members
+    if core_members:
+        console.print(f"\n[bold]Core Structure[/] (k={max_k}, {len(core_members)} nodes)")
+        for n in core_members[:top_n]:
+            console.print(f"  {n}")
+        if len(core_members) > top_n:
+            console.print(f"  [dim]... and {len(core_members) - top_n} more[/]")
 
     # Bridges
     if bridges:
@@ -1194,16 +1311,13 @@ def analyze(top_n: int, fmt: str | None) -> None:
             lcom_str = f"[red]{lcom_val}[/]" if lcom_val > 1 else str(lcom_val)
             ck_table.add_row(
                 name,
-                str(wmc_data.get(name, 0)),
-                str(cbo_data.get(name, 0)),
-                str(rfc_data.get(name, 0)),
-                lcom_str,
-                str(dit_data.get(name, 0)),
-                str(noc_data.get(name, 0)),
+                str(wmc_data.get(name, 0)), str(cbo_data.get(name, 0)),
+                str(rfc_data.get(name, 0)), lcom_str,
+                str(dit_data.get(name, 0)), str(noc_data.get(name, 0)),
             )
         console.print(ck_table)
 
-    # Module metrics (Martin)
+    # Module metrics
     if martin_data:
         console.print(f"\n[bold]Module Metrics (Martin)[/]")
         mod_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
@@ -1221,17 +1335,6 @@ def analyze(top_n: int, fmt: str | None) -> None:
                 str(m["instability"]), str(m["abstractness"]), d_str,
             )
         console.print(mod_table)
-
-    # SDP violations
-    if sdp:
-        console.print(f"\n[red bold]SDP Violations[/] ({len(sdp)})")
-        for v in sdp[:5]:
-            console.print(
-                f"  [red]-[/] {v['source']} [dim](I={v['source_instability']})[/]"
-                f" depends on {v['target']} [dim](I={v['target_instability']})[/]"
-            )
-    else:
-        console.print(f"\n[green]No SDP violations[/]")
 
 
 # --- Scan ---

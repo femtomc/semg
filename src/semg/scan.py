@@ -35,6 +35,19 @@ DEFAULT_EXCLUDES = [
 ]
 
 
+def load_semgignore(root: Path) -> list[str]:
+    """Load additional exclude patterns from .semgignore file (gitignore syntax)."""
+    ignore_file = root / ".semgignore"
+    if not ignore_file.exists():
+        return []
+    patterns: list[str] = []
+    for line in ignore_file.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+    return patterns
+
+
 @dataclass
 class ScanStats:
     files: int = 0
@@ -108,7 +121,7 @@ def collect_files(
     excludes: list[str] | None = None,
 ) -> list[Path]:
     """Walk paths and collect files with registered extensions."""
-    all_excludes = DEFAULT_EXCLUDES + (excludes or [])
+    all_excludes = DEFAULT_EXCLUDES + load_semgignore(root) + (excludes or [])
     files: list[Path] = []
 
     for path in paths:
