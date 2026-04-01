@@ -34,7 +34,7 @@ click.rich_click.COMMAND_GROUPS = {
     "semg": [
         {"name": "Explore", "commands": ["about", "impact", "between", "overview", "diff"]},
         {"name": "Inspect", "commands": ["show", "list", "status", "query", "validate"]},
-        {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan"]},
+        {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan", "batch"]},
         {"name": "Export", "commands": ["export"]},
     ],
 }
@@ -918,6 +918,127 @@ def scan(paths: tuple[str, ...], clean: bool, exclude: tuple[str, ...], fmt: str
         if stats.skipped_edges:
             table.add_row("Skipped", f"{stats.skipped_edges} unresolved")
         console.print(table)
+
+
+# --- Batch ---
+
+
+@main.command()
+@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+def batch(fmt: str | None) -> None:
+    """Execute JSONL commands from stdin in one load/save cycle.
+
+    Each line is a JSON object with an "op" field and operation-specific fields.
+    This is much faster than running individual CLI commands when making many
+    mutations, since the graph is only loaded and saved once.
+
+    \b
+    Supported operations:
+      {"op": "add", "type": "function", "name": "app.main", "file": "app.py", "line": 1, "doc": "...", "metadata": {}}
+      {"op": "link", "source": "app", "rel": "contains", "target": "app.main", "metadata": {}}
+      {"op": "rm", "name": "app.main"}
+      {"op": "unlink", "source": "app", "rel": "contains", "target": "app.main"}
+      {"op": "update", "name": "app.main", "type": "method", "file": "...", "line": 2, "doc": "...", "metadata": {}}
+    """
+    import json as json_mod
+
+    graph, root = _load()
+    fmt = _auto_fmt(fmt)
+
+    stats = {"ok": 0, "errors": 0, "ops": []}
+    input_text = click.get_text_stream("stdin").read()
+
+    for line_no, line in enumerate(input_text.splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            cmd = json_mod.loads(line)
+        except json_mod.JSONDecodeError as e:
+            stats["errors"] += 1
+            stats["ops"].append({"line": line_no, "error": f"invalid JSON: {e}"})
+            continue
+
+        op = cmd.get("op")
+        try:
+            if op == "add":
+                node = Node(
+                    name=cmd["name"],
+                    type=NodeType(cmd["type"]),
+                    file=cmd.get("file"),
+                    line=cmd.get("line"),
+                    docstring=cmd.get("doc"),
+                    metadata=cmd.get("metadata", {}),
+                )
+                graph.add_node(node)
+                stats["ok"] += 1
+                stats["ops"].append({"line": line_no, "op": "add", "name": cmd["name"]})
+
+            elif op == "link":
+                edge = Edge(
+                    source=cmd["source"],
+                    target=cmd["target"],
+                    rel=RelType(cmd["rel"]),
+                    metadata=cmd.get("metadata", {}),
+                )
+                graph.add_edge(edge)
+                stats["ok"] += 1
+                stats["ops"].append({"line": line_no, "op": "link", "source": cmd["source"], "target": cmd["target"]})
+
+            elif op == "rm":
+                name = cmd["name"]
+                matches = graph.resolve_name(name)
+                if len(matches) == 1:
+                    graph.remove_node(matches[0])
+                    stats["ok"] += 1
+                    stats["ops"].append({"line": line_no, "op": "rm", "name": matches[0]})
+                else:
+                    stats["errors"] += 1
+                    stats["ops"].append({"line": line_no, "error": f"cannot resolve: {name!r}"})
+
+            elif op == "unlink":
+                graph.remove_edge(cmd["source"], cmd["rel"], cmd["target"])
+                stats["ok"] += 1
+                stats["ops"].append({"line": line_no, "op": "unlink"})
+
+            elif op == "update":
+                name = cmd["name"]
+                matches = graph.resolve_name(name)
+                if len(matches) != 1:
+                    stats["errors"] += 1
+                    stats["ops"].append({"line": line_no, "error": f"cannot resolve: {name!r}"})
+                    continue
+                node = graph.get_node(matches[0])
+                if "type" in cmd:
+                    node.type = NodeType(cmd["type"])
+                if "file" in cmd:
+                    node.file = cmd["file"]
+                if "line" in cmd:
+                    node.line = cmd["line"]
+                if "doc" in cmd:
+                    node.docstring = cmd["doc"]
+                if "metadata" in cmd:
+                    node.metadata.update(cmd["metadata"])
+                stats["ok"] += 1
+                stats["ops"].append({"line": line_no, "op": "update", "name": matches[0]})
+
+            else:
+                stats["errors"] += 1
+                stats["ops"].append({"line": line_no, "error": f"unknown op: {op!r}"})
+
+        except (KeyError, NodeNotFoundError) as e:
+            stats["errors"] += 1
+            stats["ops"].append({"line": line_no, "error": str(e)})
+
+    save_graph(graph, root)
+
+    if fmt == "json":
+        click.echo(json_mod.dumps(stats, indent=2))
+    else:
+        console.print(f"[green]Batch complete:[/] {stats['ok']} ok, {stats['errors']} errors")
+        for entry in stats["ops"]:
+            if "error" in entry:
+                console.print(f"  [red]line {entry['line']}:[/] {entry['error']}")
 
 
 # --- Output helpers ---
