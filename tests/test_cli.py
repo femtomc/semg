@@ -325,6 +325,48 @@ def test_between_no_path(tmp_path):
     assert data["path"] is None
 
 
+def test_usages(tmp_path):
+    runner = _build_sample_graph(tmp_path)
+    result = runner.invoke(main, ["usages", "app.utils.helper"])
+    data = json.loads(result.output)
+    assert data["target"] == "app.utils.helper"
+    assert data["count"] >= 1
+    # Engine.run calls helper
+    nodes = [u["node"] for u in data["usages"]]
+    assert "app.core.Engine.run" in nodes
+
+
+def test_usages_with_rel_filter(tmp_path):
+    runner = _build_sample_graph(tmp_path)
+    result = runner.invoke(main, ["usages", "app.utils.helper", "--rel", "calls"])
+    data = json.loads(result.output)
+    for u in data["usages"]:
+        assert u["rel"] == "calls"
+
+
+def test_usages_includes_location(tmp_path):
+    runner = _init_runner(tmp_path)
+    runner.invoke(main, ["add", "function", "target", "--file", "lib.py", "--line", "10"])
+    runner.invoke(main, ["add", "function", "caller", "--file", "app.py", "--line", "20"])
+    runner.invoke(main, ["link", "caller", "calls", "target"])
+    result = runner.invoke(main, ["usages", "target"])
+    data = json.loads(result.output)
+    assert data["count"] == 1
+    u = data["usages"][0]
+    assert u["node"] == "caller"
+    assert u["file"] == "app.py"
+    assert u["line"] == 20
+
+
+def test_usages_no_results(tmp_path):
+    runner = _init_runner(tmp_path)
+    runner.invoke(main, ["add", "module", "isolated"])
+    result = runner.invoke(main, ["usages", "isolated"])
+    data = json.loads(result.output)
+    assert data["count"] == 0
+    assert data["usages"] == []
+
+
 def test_overview(tmp_path):
     runner = _build_sample_graph(tmp_path)
     result = runner.invoke(main, ["overview"])

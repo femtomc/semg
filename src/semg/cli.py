@@ -32,7 +32,7 @@ click.rich_click.STYLE_SWITCH = "bold green"
 click.rich_click.STYLE_METAVAR = "dim"
 click.rich_click.COMMAND_GROUPS = {
     "semg": [
-        {"name": "Explore", "commands": ["about", "impact", "between", "overview", "diff", "analyze"]},
+        {"name": "Explore", "commands": ["about", "usages", "impact", "between", "overview", "diff", "analyze"]},
         {"name": "Inspect", "commands": ["show", "list", "status", "query", "validate"]},
         {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan", "watch", "batch"]},
         {"name": "Export", "commands": ["export"]},
@@ -392,6 +392,78 @@ def about(name: str, depth: int, fmt: str | None) -> None:
                 lines.append(f"  [dim]... and {len(neighbors) - 20} more[/]")
 
     console.print(Panel("\n".join(lines), title=title, border_style="dim"))
+
+
+@main.command()
+@click.argument("name")
+@click.option("--rel", default=None, help="Filter by relationship type (e.g. calls, imports, inherits)")
+@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+def usages(name: str, rel: str | None, fmt: str | None) -> None:
+    """Where is X used? Every direct reference with source location.
+
+    Shows all nodes that reference X via coupling edges (calls, imports,
+    inherits, implements, depends_on), with the file and line range of
+    each caller so you can jump straight to the usage site.
+
+    \b
+    Examples:
+      semg usages SemGraph               # all usages of SemGraph
+      semg usages add_node --rel calls   # only call sites
+    """
+    import json as json_mod
+
+    graph, _root = _load()
+    name = _resolve_or_exit(graph, name)
+    fmt = _auto_fmt(fmt)
+
+    coupling_rels = {"calls", "imports", "inherits", "implements", "depends_on"}
+    usage_list: list[dict] = []
+
+    for edge in graph.incoming(name, rel=rel):
+        if rel is not None or edge.rel.value in coupling_rels:
+            source_node = graph.get_node(edge.source)
+            entry: dict = {
+                "node": edge.source,
+                "rel": edge.rel.value,
+            }
+            if source_node:
+                if source_node.file:
+                    entry["file"] = source_node.file
+                if source_node.line is not None:
+                    entry["line"] = source_node.line
+                if source_node.end_line is not None:
+                    entry["end_line"] = source_node.end_line
+            usage_list.append(entry)
+
+    usage_list.sort(key=lambda u: (u.get("file", ""), u.get("line", 0)))
+
+    if fmt == "json":
+        click.echo(json_mod.dumps({
+            "target": name,
+            "usages": usage_list,
+            "count": len(usage_list),
+        }, indent=2))
+        return
+
+    if not usage_list:
+        console.print(f"[bold]{name}[/]: [dim]no usages found[/]")
+        return
+
+    console.print(f"[bold]Usages of[/] {name} ({len(usage_list)}):\n")
+    table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
+    table.add_column("Rel", style="dim", width=10)
+    table.add_column("Node", style="bold")
+    table.add_column("File", style="dim")
+
+    for u in usage_list:
+        loc = u.get("file", "")
+        if "line" in u:
+            loc += f":{u['line']}"
+            if "end_line" in u and u["end_line"] != u["line"]:
+                loc += f"-{u['end_line']}"
+        table.add_row(_rel_style(u["rel"]), u["node"], loc)
+
+    console.print(table)
 
 
 @main.command()
