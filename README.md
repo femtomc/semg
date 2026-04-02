@@ -49,7 +49,7 @@ smg diff                    # What changed since last commit?
 | CUDA | `.cu`, `.cuh` | `tree-sitter-c` (C++ parser) |
 | Zig | `.zig` | `tree-sitter-zig` |
 
-All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` — the metrics engine and scanner are shared.
+All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` -- the metrics engine and scanner are shared.
 
 ## How it works
 
@@ -57,20 +57,20 @@ All languages extract: classes/structs, functions, methods, constants, containme
 
 There are three ways to populate the graph:
 
-1. **`smg scan`** — tree-sitter parses source files and extracts symbols, containment, imports, inheritance, and call graph automatically.
-2. **Manual CLI** — agents or humans add nodes and edges directly with `smg add` and `smg link`.
-3. **Both** — scan for the baseline, then layer on domain-specific relationships (e.g. "tests", "endpoint", custom types).
+1. **`smg scan`** -- tree-sitter parses source files and extracts symbols, containment, imports, inheritance, and call graph automatically.
+2. **Manual CLI** -- agents or humans add nodes and edges directly with `smg add` and `smg link`.
+3. **Both** -- scan for the baseline, then layer on domain-specific relationships (e.g. "tests", "endpoint", custom types).
 
 ### Provenance tracking
 
-Every node and edge is tagged with `source: "scan"` or `source: "manual"`. When rescanning, only scan-sourced nodes are cleaned — manual annotations survive. If a rescan deletes a node that had manual edges, those orphaned edges are reported so the agent can re-link them.
+Every node and edge is tagged with `source: "scan"` or `source: "manual"`. When rescanning, only scan-sourced nodes are cleaned -- manual annotations survive. If a rescan deletes a node that had manual edges, those orphaned edges are reported so the agent can re-link them.
 
 ### Excluding files
 
 `smg scan` skips common non-source directories by default (`.git`, `node_modules`, `__pycache__`, `.venv`, etc.). You can extend this in two ways:
 
-- **`--exclude` flag** — pass additional glob patterns per invocation: `smg scan src/ --exclude "*.generated.py" --exclude "vendor/*"`
-- **`.smgignore` file** — place a `.smgignore` at your project root with one glob pattern per line (same syntax as `.gitignore`). These patterns are loaded automatically on every scan.
+- **`--exclude` flag** -- pass additional glob patterns per invocation: `smg scan src/ --exclude "*.generated.py" --exclude "vendor/*"`
+- **`.smgignore` file** -- place a `.smgignore` at your project root with one glob pattern per line (same syntax as `.gitignore`). These patterns are loaded automatically on every scan.
 
 ### Auto-format detection
 
@@ -146,7 +146,7 @@ echo '{"op":"add","type":"module","name":"app"}
 {"op":"link","source":"app","rel":"contains","target":"app.main"}' | smg batch
 ```
 
-One graph load/save cycle for all mutations. Partial failure tolerant — errors on individual lines are reported but don't stop processing.
+One graph load/save cycle for all mutations. Partial failure tolerant -- errors on individual lines are reported but don't stop processing.
 
 ### 7. Export
 
@@ -226,7 +226,7 @@ Every function and method node includes AST-based metrics in its metadata, compu
 | Metric | Description |
 |--------|-------------|
 | `cyclomatic_complexity` | Number of linearly independent paths through a function. 1 + branches + boolean operators. [McCabe (1976)][mccabe] |
-| `cognitive_complexity` | Branches weighted by nesting depth — penalizes deeply nested logic more than flat branching. [Campbell (2018)][cognitive] |
+| `cognitive_complexity` | Branches weighted by nesting depth -- penalizes deeply nested logic more than flat branching. [Campbell (2018)][cognitive] |
 | `max_nesting_depth` | Deepest control flow nesting level |
 | `lines_of_code` | Function body line count |
 | `parameter_count` | Number of parameters |
@@ -234,7 +234,7 @@ Every function and method node includes AST-based metrics in its metadata, compu
 | `fan_in` | How many functions call this one |
 | `fan_out` | How many functions this one calls |
 
-Language-agnostic — metrics are computed from tree-sitter ASTs using a per-language `BranchMap` that maps node types to semantic roles.
+Language-agnostic -- metrics are computed from tree-sitter ASTs using a per-language `BranchMap` that maps node types to semantic roles.
 
 ```bash
 # Top 5 most complex functions
@@ -262,15 +262,15 @@ smg analyze --format json          # structured output for agents
 
 | Analysis | What it finds | Why it matters |
 |----------|--------------|----------------|
-| Cycle detection | Circular dependencies between modules/classes. Uses Tarjan's algorithm for strongly connected components. [Tarjan (1972)][tarjan] | Cycles prevent independent deployment and testing — they force you to change and release coupled components together. |
+| Cycle detection | Circular dependencies between modules/classes. Uses Tarjan's algorithm for strongly connected components. [Tarjan (1972)][tarjan] | Cycles prevent independent deployment and testing -- they force you to change and release coupled components together. |
 | Topological layering | Assigns each node a layer based on dependency depth (layer 0 = leaves with no outgoing deps). | Reveals the architecture's depth. Tall, narrow layer stacks suggest long dependency chains; wide layers suggest parallel modules. |
-| PageRank | Ranks nodes by recursive importance — a node is important if important nodes depend on it. [Brin & Page (1998)][pagerank] | Identifies load-bearing abstractions: the modules that, if broken, cascade failures through the most dependents. |
-| Betweenness centrality | Measures how often a node lies on shortest paths between other nodes. [Brandes (2001)][brandes] | Nodes with high betweenness are structural bottlenecks — information and control flow must pass through them. Changing them has outsized risk. |
+| PageRank | Ranks nodes by recursive importance -- a node is important if important nodes depend on it. [Brin & Page (1998)][pagerank] | Identifies load-bearing abstractions: the modules that, if broken, cascade failures through the most dependents. |
+| Betweenness centrality | Measures how often a node lies on shortest paths between other nodes. [Brandes (2001)][brandes] | Nodes with high betweenness are structural bottlenecks -- information and control flow must pass through them. Changing them has outsized risk. |
 | k-core decomposition | Finds the maximal subgraph where every node has at least _k_ connections. [Seidman (1983)][seidman] | The innermost core is the tightly coupled heart of the architecture. If it's large, the system may be hard to decompose. |
-| Bridge detection | Edges whose removal disconnects part of the graph. | Bridges are fragile — they represent sole paths between components. Redundant paths (no bridges) indicate a more resilient architecture. |
+| Bridge detection | Edges whose removal disconnects part of the graph. | Bridges are fragile -- they represent sole paths between components. Redundant paths (no bridges) indicate a more resilient architecture. |
 | Fan-in / fan-out | Per-node counts of incoming (fan-in) and outgoing (fan-out) coupling edges. | High fan-in means a node is heavily depended on (risky to change). High fan-out means a node depends on many others (sensitive to their changes). |
 | Dead code detection | Nodes with zero incoming coupling edges (no callers, no importers), excluding modules, packages, and known entry points. | Dead code inflates the codebase without providing value. Removing it reduces maintenance burden and cognitive load. |
-| Layering violations | Coupling edges where the source is at the same or lower topological layer than the target — back-dependencies. | These are the specific edges that create cycles or violate the intended dependency flow. They tell you which edges to remove to restore clean layering. |
+| Layering violations | Coupling edges where the source is at the same or lower topological layer than the target -- back-dependencies. | These are the specific edges that create cycles or violate the intended dependency flow. They tell you which edges to remove to restore clean layering. |
 
 ### OO metrics
 
@@ -278,16 +278,16 @@ The CK suite ([Chidamber & Kemerer, 1994][ck]) and Martin's package metrics ([Ma
 
 | Metric | Per | Description |
 |--------|-----|-------------|
-| WMC | class | Weighted Methods per Class — sum of cyclomatic complexity of all methods. High WMC indicates a class that does too much. |
-| DIT | class | Depth of Inheritance Tree — how many ancestors a class has. Deep trees increase complexity and fragility. |
-| NOC | class | Number of Children — direct subclass count. Many children suggest a class is a key abstraction (or overused as a base). |
-| CBO | class | Coupling Between Objects — number of distinct external classes this class couples to. High CBO makes classes hard to reuse and test. |
-| RFC | class | Response For a Class — methods in the class plus distinct methods they directly call. High RFC means more potential behavior to test. |
-| LCOM4 | class | Lack of Cohesion of Methods — number of connected components in the intra-class method call graph. LCOM4 > 1 means the class has disjoint responsibilities and should likely be split. [Hitz & Montazeri (1995)][lcom4] |
-| Ca / Ce | module | Afferent (incoming) / efferent (outgoing) coupling — how many other modules depend on this one, and how many it depends on. |
+| WMC | class | Weighted Methods per Class -- sum of cyclomatic complexity of all methods. High WMC indicates a class that does too much. |
+| DIT | class | Depth of Inheritance Tree -- how many ancestors a class has. Deep trees increase complexity and fragility. |
+| NOC | class | Number of Children -- direct subclass count. Many children suggest a class is a key abstraction (or overused as a base). |
+| CBO | class | Coupling Between Objects -- number of distinct external classes this class couples to. High CBO makes classes hard to reuse and test. |
+| RFC | class | Response For a Class -- methods in the class plus distinct methods they directly call. High RFC means more potential behavior to test. |
+| LCOM4 | class | Lack of Cohesion of Methods -- number of connected components in the intra-class method call graph. LCOM4 > 1 means the class has disjoint responsibilities and should likely be split. [Hitz & Montazeri (1995)][lcom4] |
+| Ca / Ce | module | Afferent (incoming) / efferent (outgoing) coupling -- how many other modules depend on this one, and how many it depends on. |
 | Instability | module | Ce / (Ca + Ce). Ranges from 0 (stable, heavily depended upon) to 1 (unstable, depends on others). |
 | Abstractness | module | Ratio of interfaces to total classes. Ranges from 0 (all concrete) to 1 (all abstract). |
-| Distance | module | \|A + I - 1\| — distance from the "main sequence" line where A + I = 1. Modules far from this line are either too abstract for their stability or too concrete for their instability. |
+| Distance | module | \|A + I - 1\| -- distance from the "main sequence" line where A + I = 1. Modules far from this line are either too abstract for their stability or too concrete for their instability. |
 | SDP violations | module | Cases where a stable module depends on an unstable module, violating the Stable Dependencies Principle. Dependencies should flow toward stability. |
 
 ### Code smells
@@ -296,7 +296,7 @@ These patterns, cataloged by [Fowler (1999)][fowler], indicate structural proble
 
 | Smell | Detection rule | What it means |
 |-------|---------------|---------------|
-| God Class | WMC >= 20 AND CBO >= 5 AND LCOM4 >= 2 | A class with too many responsibilities — complex, coupled, and incohesive. Should be split. |
+| God Class | WMC >= 20 AND CBO >= 5 AND LCOM4 >= 2 | A class with too many responsibilities -- complex, coupled, and incohesive. Should be split. |
 | Feature Envy | Method references another class's members more than its own (>= 2 external refs) | The method probably belongs in the other class. Moving it improves cohesion in both classes. |
 | Shotgun Surgery | Function/method with coupling fan-out >= 7 | Changing this function likely requires coordinated changes across many dependents. Reducing fan-out isolates change. |
 
@@ -304,9 +304,9 @@ All analyses feed into a synthesized **hotspot ranking** that scores nodes by a 
 
 ## Architectural constraints
 
-`smg analyze` tells you what *is* true about your architecture. `smg rule` and `smg check` let you declare what *should* be true — and find where the code departs from intent.
+`smg analyze` tells you what *is* true about your architecture. `smg rule` and `smg check` let you declare what *should* be true -- and find where the code departs from intent.
 
-This is inspired by Alloy's approach to software design ([Jackson, 2012][alloy]): state structural properties declaratively, then check them automatically. When a rule is violated, smg reports the specific offending edges or nodes — concrete counterexamples, not just "violated: true."
+This is inspired by Alloy's approach to software design ([Jackson, 2012][alloy]): state structural properties declaratively, then check them automatically. When a rule is violated, smg reports the specific offending edges or nodes -- concrete counterexamples, not just "violated: true."
 
 ### Path denial rules
 
@@ -356,15 +356,15 @@ Rules are stored in `.smg/rules` (JSONL, same format as the graph) and persist a
 
 ## Node types
 
-`package`, `module`, `class`, `function`, `method`, `interface`, `variable`, `constant`, `type`, `endpoint`, `config` — plus any custom string.
+`package`, `module`, `class`, `function`, `method`, `interface`, `variable`, `constant`, `type`, `endpoint`, `config` -- plus any custom string.
 
 ## Relationship types
 
-`calls`, `inherits`, `implements`, `contains`, `depends_on`, `imports`, `returns`, `accepts`, `overrides`, `decorates`, `tests` — plus any custom string.
+`calls`, `inherits`, `implements`, `contains`, `depends_on`, `imports`, `returns`, `accepts`, `overrides`, `decorates`, `tests` -- plus any custom string.
 
 ## Data format
 
-`.smg/graph.jsonl` — one JSON object per line:
+`.smg/graph.jsonl` -- one JSON object per line:
 
 ```jsonl
 {"kind":"node","name":"app.core.Engine","type":"class","file":"src/app/core.py","line":12,"docstring":"The engine.","metadata":{"source":"scan","metrics":{...}}}
@@ -379,13 +379,13 @@ Node names are fully qualified (`app.core.Engine.run`), but you can use short na
 
 ```bash
 smg about Engine          # Matches app.core.Engine if unambiguous
-smg show run              # Error if multiple matches — lists candidates
+smg show run              # Error if multiple matches -- lists candidates
 ```
 
 ## Design principles
 
 - **Agent-first**: JSON by default when piped, structured output, exit codes for branching
-- **Gradual disclosure**: `about` → `show` → `query` — start simple, drill down as needed
+- **Gradual disclosure**: `about` -> `show` -> `query` -- start simple, drill down as needed
 - **Language-agnostic**: tree-sitter grammars for any language, BranchMap protocol for metrics
 - **Incremental**: `--changed` rescans only modified files, `watch` for live updates
 - **Provenance-aware**: scan vs manual annotations tracked, manual edges survive rescans
