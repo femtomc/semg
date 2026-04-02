@@ -1,23 +1,22 @@
 # smg
 
-Semantic graph for software architecture — built for agents and humans.
-
-`smg` turns your codebase into a queryable graph of modules, classes, functions, and their relationships. Agents use it to understand architecture before writing code. Humans use it to generate diagrams and explore dependencies.
+`smg` turns a codebase into a queryable graph of modules, classes, functions, and their relationships. Agents use it to understand architecture before writing code. Humans use it to generate diagrams and explore dependencies.
 
 ## Install
 
 ```bash
-# As a global CLI tool (recommended, all languages)
+# All languages
 uv tool install smg \
   --from git+https://github.com/femtomc/smg \
   --with tree-sitter \
   --with tree-sitter-python \
   --with tree-sitter-javascript \
   --with tree-sitter-typescript \
+  --with tree-sitter-c \
   --with tree-sitter-zig \
   --with watchdog
 
-# Minimal (Python only)
+# Python only
 uv tool install smg --from git+https://github.com/femtomc/smg --with tree-sitter --with tree-sitter-python
 ```
 
@@ -33,6 +32,7 @@ smg about MyClass           # What is this?
 smg impact MyClass          # What breaks if I change it?
 smg between api.routes db   # How do these relate?
 smg overview                # Orient me
+smg analyze                 # Architectural analysis
 smg diff                    # What changed since last commit?
 ```
 
@@ -43,9 +43,11 @@ smg diff                    # What changed since last commit?
 | Python | `.py` | `tree-sitter-python` |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | `tree-sitter-javascript` |
 | TypeScript | `.ts`, `.tsx` | `tree-sitter-typescript` |
+| C/C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx` | `tree-sitter-c` |
+| CUDA | `.cu`, `.cuh` | `tree-sitter-c` (C++ parser) |
 | Zig | `.zig` | `tree-sitter-zig` |
 
-All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. Adding a new language means writing a `langs/<language>.py` extractor + a `BranchMap` — the metrics engine and scanner are shared.
+All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` — the metrics engine and scanner are shared.
 
 ## How it works
 
@@ -61,16 +63,23 @@ There are three ways to populate the graph:
 
 Every node and edge is tagged with `source: "scan"` or `source: "manual"`. When rescanning, only scan-sourced nodes are cleaned — manual annotations survive. If a rescan deletes a node that had manual edges, those orphaned edges are reported so the agent can re-link them.
 
+### Excluding files
+
+`smg scan` skips common non-source directories by default (`.git`, `node_modules`, `__pycache__`, `.venv`, etc.). You can extend this in two ways:
+
+- **`--exclude` flag** — pass additional glob patterns per invocation: `smg scan src/ --exclude "*.generated.py" --exclude "vendor/*"`
+- **`.smgignore` file** — place a `.smgignore` at your project root with one glob pattern per line (same syntax as `.gitignore`). These patterns are loaded automatically on every scan.
+
 ### Auto-format detection
 
-When stdout is a **terminal**, output is rich text with colors and tables. When stdout is **piped** (i.e. an agent is reading it), output is automatically JSON. No flags needed.
+When stdout is a **terminal**, output is rich text with colors and tables. When stdout is **piped** (i.e. an agent is reading it), output is JSON. No flags needed.
 
 ```bash
 # Human sees a rich panel
-smg about SemGraph
+smg about auth.service
 
 # Agent gets structured JSON
-result=$(smg about SemGraph)
+result=$(smg about auth.service)
 ```
 
 You can always override with `--format text` or `--format json`.
@@ -92,6 +101,8 @@ smg about auth.service          # Context card: type, file, connections, contain
 smg impact auth.service         # What depends on this? (reverse transitive)
 smg between api.routes db.models  # How do these connect?
 smg diff                        # What changed structurally since last commit?
+smg analyze                     # Cycles, dead code, hotspots, code smells
+smg analyze --summary --top 5   # Key findings only
 smg query deps auth.service     # What does this depend on? (forward transitive)
 ```
 
@@ -109,8 +120,8 @@ smg list --type class           # All classes in the graph
 ```bash
 smg add endpoint /api/login --doc "Login endpoint" --meta method=POST
 smg link api.routes calls auth.service
-smg scan src/ --clean           # Full rescan (smart clean preserves manual edges)
-smg scan --changed              # Incremental: only rescan files changed since HEAD
+smg scan src/ --clean           # Rescan (smart clean preserves manual edges)
+smg scan --changed              # Incremental: only files changed since HEAD
 smg scan --since HEAD~3         # Incremental: since a specific ref
 smg watch src/                  # Auto-rescan on file changes (background)
 ```
@@ -135,15 +146,16 @@ smg export json --indent        # Full graph as JSON
 
 ## Commands
 
-### Explore (start here)
+### Explore
 
 | Command | Purpose |
 |---------|---------|
-| `smg about <name> [--depth 0\|1\|2]` | Progressive context card |
+| `smg about <name> [--depth 0\|1\|2]` | Context card with progressive detail |
 | `smg impact <name> [--depth N]` | Reverse transitive impact analysis |
 | `smg between <A> <B>` | Shortest path + direct edges |
 | `smg overview [--top N]` | Graph stats + most connected nodes |
 | `smg diff [REF]` | Structural diff against a git ref (default: HEAD) |
+| `smg analyze [--top N] [--module PREFIX] [--summary]` | Architectural analysis (see below) |
 
 ### Inspect
 
@@ -165,7 +177,7 @@ smg export json --indent        # Full graph as JSON
 | Command | Purpose |
 |---------|---------|
 | `smg init` | Create `.smg/` in current directory |
-| `smg scan [PATH...] [--clean]` | Auto-populate from source via tree-sitter |
+| `smg scan [PATH...] [--clean] [--exclude GLOB]` | Auto-populate from source via tree-sitter |
 | `smg scan --changed` | Incremental: rescan files changed since HEAD |
 | `smg scan --since REF` | Incremental: rescan files changed since a git ref |
 | `smg watch [PATH...]` | Auto-rescan on file changes (Ctrl+C to stop) |
@@ -185,15 +197,15 @@ smg export json --indent        # Full graph as JSON
 | `smg export dot` | Graphviz DOT |
 | `smg export text` | Human-readable listing |
 
-## Metrics
+## Per-function metrics
 
 Every function and method node includes AST-based metrics in its metadata, computed automatically during scan:
 
 | Metric | Description |
 |--------|-------------|
-| `cyclomatic_complexity` | 1 + branches + boolean operators |
-| `cognitive_complexity` | Branches weighted by nesting depth (Sonar-style) |
-| `max_nesting_depth` | Deepest control flow nesting |
+| `cyclomatic_complexity` | Number of linearly independent paths through a function. 1 + branches + boolean operators. [McCabe (1976)][mccabe] |
+| `cognitive_complexity` | Branches weighted by nesting depth — penalizes deeply nested logic more than flat branching. [Campbell (2018)][cognitive] |
+| `max_nesting_depth` | Deepest control flow nesting level |
 | `lines_of_code` | Function body line count |
 | `parameter_count` | Number of parameters |
 | `return_count` | Number of return statements |
@@ -212,6 +224,61 @@ for n in sorted(json.load(sys.stdin),
     m = n['metadata']['metrics']
     print(f'{m[\"cyclomatic_complexity\"]:3d} CC  {n[\"name\"]}')"
 ```
+
+## Architectural analysis
+
+`smg analyze` runs graph-theoretic, OO, and smell-detection analyses in a single pass.
+
+```bash
+smg analyze                        # all analyses
+smg analyze --module auth          # scope to auth.* nodes
+smg analyze --summary --top 5      # hotspots and key findings only
+smg analyze --format json          # structured output for agents
+```
+
+### Graph-theoretic analyses
+
+| Analysis | What it finds | Why it matters |
+|----------|--------------|----------------|
+| Cycle detection | Circular dependencies between modules/classes. Uses Tarjan's algorithm for strongly connected components. [Tarjan (1972)][tarjan] | Cycles prevent independent deployment and testing — they force you to change and release coupled components together. |
+| Topological layering | Assigns each node a layer based on dependency depth (layer 0 = leaves with no outgoing deps). | Reveals the architecture's depth. Tall, narrow layer stacks suggest long dependency chains; wide layers suggest parallel modules. |
+| PageRank | Ranks nodes by recursive importance — a node is important if important nodes depend on it. [Brin & Page (1998)][pagerank] | Identifies load-bearing abstractions: the modules that, if broken, cascade failures through the most dependents. |
+| Betweenness centrality | Measures how often a node lies on shortest paths between other nodes. [Brandes (2001)][brandes] | Nodes with high betweenness are structural bottlenecks — information and control flow must pass through them. Changing them has outsized risk. |
+| k-core decomposition | Finds the maximal subgraph where every node has at least _k_ connections. [Seidman (1983)][seidman] | The innermost core is the tightly coupled heart of the architecture. If it's large, the system may be hard to decompose. |
+| Bridge detection | Edges whose removal disconnects part of the graph. | Bridges are fragile — they represent sole paths between components. Redundant paths (no bridges) indicate a more resilient architecture. |
+| Fan-in / fan-out | Per-node counts of incoming (fan-in) and outgoing (fan-out) coupling edges. | High fan-in means a node is heavily depended on (risky to change). High fan-out means a node depends on many others (sensitive to their changes). |
+| Dead code detection | Nodes with zero incoming coupling edges (no callers, no importers), excluding modules, packages, and known entry points. | Dead code inflates the codebase without providing value. Removing it reduces maintenance burden and cognitive load. |
+| Layering violations | Coupling edges where the source is at the same or lower topological layer than the target — back-dependencies. | These are the specific edges that create cycles or violate the intended dependency flow. They tell you which edges to remove to restore clean layering. |
+
+### OO metrics
+
+The CK suite ([Chidamber & Kemerer, 1994][ck]) and Martin's package metrics ([Martin, 1994][martin]) quantify class-level and module-level design quality.
+
+| Metric | Per | Description |
+|--------|-----|-------------|
+| WMC | class | Weighted Methods per Class — sum of cyclomatic complexity of all methods. High WMC indicates a class that does too much. |
+| DIT | class | Depth of Inheritance Tree — how many ancestors a class has. Deep trees increase complexity and fragility. |
+| NOC | class | Number of Children — direct subclass count. Many children suggest a class is a key abstraction (or overused as a base). |
+| CBO | class | Coupling Between Objects — number of distinct external classes this class couples to. High CBO makes classes hard to reuse and test. |
+| RFC | class | Response For a Class — methods in the class plus distinct methods they directly call. High RFC means more potential behavior to test. |
+| LCOM4 | class | Lack of Cohesion of Methods — number of connected components in the intra-class method call graph. LCOM4 > 1 means the class has disjoint responsibilities and should likely be split. [Hitz & Montazeri (1995)][lcom4] |
+| Ca / Ce | module | Afferent (incoming) / efferent (outgoing) coupling — how many other modules depend on this one, and how many it depends on. |
+| Instability | module | Ce / (Ca + Ce). Ranges from 0 (stable, heavily depended upon) to 1 (unstable, depends on others). |
+| Abstractness | module | Ratio of interfaces to total classes. Ranges from 0 (all concrete) to 1 (all abstract). |
+| Distance | module | \|A + I - 1\| — distance from the "main sequence" line where A + I = 1. Modules far from this line are either too abstract for their stability or too concrete for their instability. |
+| SDP violations | module | Cases where a stable module depends on an unstable module, violating the Stable Dependencies Principle. Dependencies should flow toward stability. |
+
+### Code smells
+
+These patterns, cataloged by [Fowler (1999)][fowler], indicate structural problems that make code harder to change.
+
+| Smell | Detection rule | What it means |
+|-------|---------------|---------------|
+| God Class | WMC >= 20 AND CBO >= 5 AND LCOM4 >= 2 | A class with too many responsibilities — complex, coupled, and incohesive. Should be split. |
+| Feature Envy | Method references another class's members more than its own (>= 2 external refs) | The method probably belongs in the other class. Moving it improves cohesion in both classes. |
+| Shotgun Surgery | Function/method with coupling fan-out >= 7 | Changing this function likely requires coordinated changes across many dependents. Reducing fan-out isolates change. |
+
+All analyses feed into a synthesized **hotspot ranking** that scores nodes by a weighted combination of complexity, coupling, cohesion, centrality, and importance, surfacing the areas most likely to cause problems.
 
 ## Node types
 
@@ -250,6 +317,19 @@ smg show run              # Error if multiple matches — lists candidates
 - **Provenance-aware**: scan vs manual annotations tracked, manual edges survive rescans
 - **Zero config**: `smg init && smg scan .` works on any supported project
 - **Git-friendly**: JSONL is diffable, sorted deterministically, written atomically
+
+## References
+
+[tarjan]: https://doi.org/10.1137/0201010 "Tarjan (1972). Depth-First Search and Linear Graph Algorithms. SIAM Journal on Computing, 1(2), 146–160."
+[pagerank]: https://doi.org/10.1016/S0169-7552(98)00110-X "Brin & Page (1998). The Anatomy of a Large-Scale Hypertextual Web Search Engine. Computer Networks, 30(1–7), 107–117."
+[brandes]: https://doi.org/10.1080/0022250X.2001.9990249 "Brandes (2001). A Faster Algorithm for Betweenness Centrality. Journal of Mathematical Sociology, 25(2), 163–177."
+[seidman]: https://doi.org/10.1016/0378-8733(83)90028-X "Seidman (1983). Network Structure and Minimum Degree. Social Networks, 5(3), 269–287."
+[mccabe]: https://doi.org/10.1109/TSE.1976.233837 "McCabe (1976). A Complexity Measure. IEEE Transactions on Software Engineering, SE-2(4), 308–320."
+[cognitive]: https://doi.org/10.1145/3194164.3194186 "Campbell (2018). Cognitive Complexity: An Overview and Evaluation. Proc. TechDebt '18, ACM."
+[ck]: https://doi.org/10.1109/32.295895 "Chidamber & Kemerer (1994). A Metrics Suite for Object Oriented Design. IEEE TSE, 20(6), 476–493."
+[martin]: https://doi.org/10.1007/978-1-4612-4316-3_9 "Martin (1994). OO Design Quality Metrics: An Analysis of Dependencies."
+[lcom4]: https://scholar.google.com/scholar?q=Hitz+Montazeri+1995+Measuring+Coupling+Cohesion "Hitz & Montazeri (1995). Measuring Coupling and Cohesion in Object-Oriented Systems."
+[fowler]: https://martinfowler.com/books/refactoring.html "Fowler (1999). Refactoring: Improving the Design of Existing Code. Addison-Wesley."
 
 ## License
 
