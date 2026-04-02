@@ -8,10 +8,10 @@ from pathlib import Path
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from semg.diff import diff_graphs
-from semg.langs import get_extractor, load_extractors
-from semg.scan import DEFAULT_EXCLUDES, _strip_extension, scan_paths
-from semg.storage import load_graph, save_graph
+from smg.diff import diff_graphs
+from smg.langs import get_extractor, load_extractors
+from smg.scan import DEFAULT_EXCLUDES, _strip_extension, scan_paths
+from smg.storage import load_graph, save_graph
 
 
 class _ScanHandler(FileSystemEventHandler):

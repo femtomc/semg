@@ -3,7 +3,7 @@ import os
 
 from click.testing import CliRunner
 
-from semg.cli import main
+from smg.cli import main
 
 # Note: CliRunner stdout is not a TTY, so auto-format defaults to JSON.
 # Tests that check text output must use --format text explicitly.
@@ -22,7 +22,7 @@ def test_init(tmp_path):
     result = runner.invoke(main, ["init"])
     assert result.exit_code == 0
     assert "Initialized" in result.output
-    assert (tmp_path / ".semg" / "graph.jsonl").exists()
+    assert (tmp_path / ".smg" / "graph.jsonl").exists()
 
 
 def test_add_and_list(tmp_path):
@@ -153,7 +153,7 @@ def test_export_dot(tmp_path):
     runner = _init_runner(tmp_path)
     runner.invoke(main, ["add", "module", "app"])
     result = runner.invoke(main, ["export", "dot"])
-    assert "digraph semg" in result.output
+    assert "digraph smg" in result.output
 
 
 def test_export_json(tmp_path):

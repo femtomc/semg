@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from tree_sitter import Language, Node as TSNode, Parser
 
-from semg.langs import ExtractResult, register
-from semg.metrics import BranchMap, compute_metrics
-from semg.model import Edge, Node, NodeType, RelType
+from smg.langs import ExtractResult, register
+from smg.metrics import BranchMap, compute_metrics
+from smg.model import Edge, Node, NodeType, RelType
 
 _BUILTINS = frozenset({
     "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf",

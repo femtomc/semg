@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from semg.graph import SemGraph
-from semg.model import NodeType, RelType
-from semg.scan import file_to_module_name, scan_paths
-from semg.storage import init_project, load_graph
+from smg.graph import SemGraph
+from smg.model import NodeType, RelType
+from smg.scan import file_to_module_name, scan_paths
+from smg.storage import init_project, load_graph
 
 try:
     import tree_sitter_javascript

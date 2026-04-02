@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from semg.graph import SemGraph
-from semg.model import Node, NodeType, RelType
-from semg.scan import collect_files, file_to_module_name, scan_paths
-from semg.storage import init_project, load_graph, save_graph
+from smg.graph import SemGraph
+from smg.model import Node, NodeType, RelType
+from smg.scan import collect_files, file_to_module_name, scan_paths
+from smg.storage import init_project, load_graph, save_graph
 
 
 # --- Name resolution tests (no tree-sitter needed) ---
@@ -46,7 +46,7 @@ def test_file_to_module_name_src_no_init(tmp_path):
 
 
 def test_collect_files_excludes(tmp_path):
-    from semg.langs import load_extractors
+    from smg.langs import load_extractors
     load_extractors()
 
     (tmp_path / "good.py").write_text("x = 1")
@@ -63,7 +63,7 @@ def test_collect_files_excludes(tmp_path):
 
 
 def test_collect_files_custom_exclude(tmp_path):
-    from semg.langs import load_extractors
+    from smg.langs import load_extractors
     load_extractors()
 
     (tmp_path / "keep.py").write_text("x = 1")
@@ -370,7 +370,7 @@ def test_scan_docstrings(tmp_path):
 def test_scan_cli(tmp_path):
     """End-to-end CLI test."""
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     root = _write_python_project(tmp_path)
     os.chdir(root)

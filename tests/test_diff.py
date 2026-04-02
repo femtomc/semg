@@ -1,7 +1,7 @@
 """Tests for graph diffing."""
-from semg.diff import GraphDiff, diff_graphs
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
+from smg.diff import GraphDiff, diff_graphs
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
 
 
 def _make_graph() -> SemGraph:
@@ -145,7 +145,7 @@ def test_diff_cli(tmp_path):
 
     from click.testing import CliRunner
 
-    from semg.cli import main
+    from smg.cli import main
 
     os.chdir(tmp_path)
     runner = CliRunner()

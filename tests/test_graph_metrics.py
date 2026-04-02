@@ -1,6 +1,6 @@
 """Tests for graph-theoretic metrics."""
-from semg.graph import SemGraph
-from semg.graph_metrics import (
+from smg.graph import SemGraph
+from smg.graph_metrics import (
     betweenness_centrality,
     detect_bridges,
     find_cycles,
@@ -8,7 +8,7 @@ from semg.graph_metrics import (
     pagerank,
     topological_layers,
 )
-from semg.model import Edge, Node, NodeType, RelType
+from smg.model import Edge, Node, NodeType, RelType
 
 
 def _node(name: str, t: NodeType = NodeType.MODULE) -> Node:

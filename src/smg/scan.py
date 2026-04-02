@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from semg.graph import SemGraph
-from semg.langs import ExtractResult, get_extractor, load_extractors
-from semg.model import Edge, Node, NodeType, RelType
+from smg.graph import SemGraph
+from smg.langs import ExtractResult, get_extractor, load_extractors
+from smg.model import Edge, Node, NodeType, RelType
 
 DEFAULT_EXCLUDES = [
     ".git",
@@ -26,7 +26,7 @@ DEFAULT_EXCLUDES = [
     "dist",
     "build",
     "*.egg-info",
-    ".semg",
+    ".smg",
     "site-packages",
     "vendor",
     "third_party",
@@ -35,9 +35,9 @@ DEFAULT_EXCLUDES = [
 ]
 
 
-def load_semgignore(root: Path) -> list[str]:
-    """Load additional exclude patterns from .semgignore file (gitignore syntax)."""
-    ignore_file = root / ".semgignore"
+def load_smgignore(root: Path) -> list[str]:
+    """Load additional exclude patterns from .smgignore file (gitignore syntax)."""
+    ignore_file = root / ".smgignore"
     if not ignore_file.exists():
         return []
     patterns: list[str] = []
@@ -65,8 +65,8 @@ def file_to_module_name(file_path: str, root: Path) -> str:
     """Convert a file path to a qualified module name.
 
     Examples:
-        src/semg/graph.py       -> semg.graph
-        src/semg/__init__.py    -> semg
+        src/smg/graph.py       -> smg.graph
+        src/smg/__init__.py    -> smg
         tests/test_graph.py     -> tests.test_graph
         app.py                  -> app
     """
@@ -121,7 +121,7 @@ def collect_files(
     excludes: list[str] | None = None,
 ) -> list[Path]:
     """Walk paths and collect files with registered extensions."""
-    all_excludes = DEFAULT_EXCLUDES + load_semgignore(root) + (excludes or [])
+    all_excludes = DEFAULT_EXCLUDES + load_smgignore(root) + (excludes or [])
     files: list[Path] = []
 
     for path in paths:

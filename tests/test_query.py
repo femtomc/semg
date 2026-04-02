@@ -1,6 +1,6 @@
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg import query
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg import query
 
 
 def _chain_graph() -> SemGraph:

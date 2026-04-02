@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg.scan import scan_paths
-from semg.storage import init_project, load_graph, save_graph
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg.scan import scan_paths
+from smg.storage import init_project, load_graph, save_graph
 
 try:
     import tree_sitter_python
@@ -68,7 +68,7 @@ def test_scan_sets_provenance_on_edges(tmp_path):
 @needs_tree_sitter
 def test_manual_add_sets_provenance(tmp_path):
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     root = _write_project(tmp_path)
     os.chdir(root)
@@ -84,7 +84,7 @@ def test_manual_add_sets_provenance(tmp_path):
 @needs_tree_sitter
 def test_manual_link_sets_provenance(tmp_path):
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     root = _write_project(tmp_path)
     os.chdir(root)
@@ -239,7 +239,7 @@ def test_stats_track_removals(tmp_path):
 @needs_tree_sitter
 def test_scan_changed_cli(tmp_path):
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     root = tmp_path
     os.chdir(root)
@@ -272,7 +272,7 @@ def test_scan_changed_cli(tmp_path):
 @needs_tree_sitter
 def test_scan_since_cli(tmp_path):
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     root = tmp_path
     os.chdir(root)
@@ -308,7 +308,7 @@ def test_scan_since_cli(tmp_path):
 @needs_tree_sitter
 def test_batch_sets_provenance(tmp_path):
     from click.testing import CliRunner
-    from semg.cli import main
+    from smg.cli import main
 
     os.chdir(tmp_path)
     runner = CliRunner()

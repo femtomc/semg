@@ -4,9 +4,9 @@ from __future__ import annotations
 import tree_sitter_zig as tszig
 from tree_sitter import Language, Node as TSNode, Parser
 
-from semg.langs import ExtractResult, register
-from semg.metrics import BranchMap, compute_metrics
-from semg.model import Edge, Node, NodeType, RelType
+from smg.langs import ExtractResult, register
+from smg.metrics import BranchMap, compute_metrics
+from smg.model import Edge, Node, NodeType, RelType
 
 _LANGUAGE = Language(tszig.language())
 _PARSER = Parser(_LANGUAGE)
@@ -107,7 +107,7 @@ class ZigExtractor:
         qualified = f"{parent_name}.{struct_name}"
         nodes.append(Node(
             name=qualified,
-            type=NodeType.CLASS,  # Zig structs map to class in semg
+            type=NodeType.CLASS,  # Zig structs map to class in smg
             file=file_path,
             line=struct_node.start_point[0] + 1,
             end_line=struct_node.end_point[0] + 1,

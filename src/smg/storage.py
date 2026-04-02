@@ -5,18 +5,18 @@ import os
 import tempfile
 from pathlib import Path
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node
+from smg.graph import SemGraph
+from smg.model import Edge, Node
 
-SEMG_DIR = ".semg"
+SMG_DIR = ".smg"
 GRAPH_FILE = "graph.jsonl"
 
 
 def find_root(start: Path | None = None) -> Path | None:
-    """Walk up from `start` looking for a `.semg/` directory."""
+    """Walk up from `start` looking for a `.smg/` directory."""
     current = (start or Path.cwd()).resolve()
     while True:
-        if (current / SEMG_DIR).is_dir():
+        if (current / SMG_DIR).is_dir():
             return current
         parent = current.parent
         if parent == current:
@@ -25,20 +25,20 @@ def find_root(start: Path | None = None) -> Path | None:
 
 
 def init_project(path: Path | None = None) -> Path:
-    """Create .semg/ directory and empty graph file. Return the project root."""
+    """Create .smg/ directory and empty graph file. Return the project root."""
     root = (path or Path.cwd()).resolve()
-    semg_dir = root / SEMG_DIR
-    semg_dir.mkdir(exist_ok=True)
-    graph_file = semg_dir / GRAPH_FILE
+    smg_dir = root / SMG_DIR
+    smg_dir.mkdir(exist_ok=True)
+    graph_file = smg_dir / GRAPH_FILE
     if not graph_file.exists():
         graph_file.touch()
     return root
 
 
 def load_graph(root: Path) -> SemGraph:
-    """Read .semg/graph.jsonl and return a SemGraph."""
+    """Read .smg/graph.jsonl and return a SemGraph."""
     graph = SemGraph()
-    graph_file = root / SEMG_DIR / GRAPH_FILE
+    graph_file = root / SMG_DIR / GRAPH_FILE
     if not graph_file.exists():
         return graph
 
@@ -67,9 +67,9 @@ def load_graph(root: Path) -> SemGraph:
 
 
 def save_graph(graph: SemGraph, root: Path) -> None:
-    """Serialize graph to .semg/graph.jsonl atomically."""
-    semg_dir = root / SEMG_DIR
-    graph_file = semg_dir / GRAPH_FILE
+    """Serialize graph to .smg/graph.jsonl atomically."""
+    smg_dir = root / SMG_DIR
+    graph_file = smg_dir / GRAPH_FILE
 
     lines: list[str] = []
     # Nodes first (sorted by name), then edges (sorted by key)
@@ -79,7 +79,7 @@ def save_graph(graph: SemGraph, root: Path) -> None:
         lines.append(edge.to_json())
 
     # Atomic write: write to temp file, then rename
-    fd, tmp_path = tempfile.mkstemp(dir=semg_dir, suffix=".tmp")
+    fd, tmp_path = tempfile.mkstemp(dir=smg_dir, suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
             for line in lines:

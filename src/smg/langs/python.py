@@ -3,9 +3,9 @@ from __future__ import annotations
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node as TSNode, Parser
 
-from semg.langs import ExtractResult, register
-from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
-from semg.model import Edge, Node, NodeType, RelType
+from smg.langs import ExtractResult, register
+from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+from smg.model import Edge, Node, NodeType, RelType
 
 _LANGUAGE = Language(tspython.language())
 _PARSER = Parser(_LANGUAGE)

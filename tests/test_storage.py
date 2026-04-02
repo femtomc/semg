@@ -1,20 +1,20 @@
 from pathlib import Path
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg.storage import find_root, init_project, load_graph, save_graph
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg.storage import find_root, init_project, load_graph, save_graph
 
 
 def test_init_project(tmp_path: Path):
     root = init_project(tmp_path)
-    assert (root / ".semg").is_dir()
-    assert (root / ".semg" / "graph.jsonl").exists()
+    assert (root / ".smg").is_dir()
+    assert (root / ".smg" / "graph.jsonl").exists()
 
 
 def test_init_project_idempotent(tmp_path: Path):
     init_project(tmp_path)
     init_project(tmp_path)  # should not fail
-    assert (tmp_path / ".semg" / "graph.jsonl").exists()
+    assert (tmp_path / ".smg" / "graph.jsonl").exists()
 
 
 def test_save_and_load(tmp_path: Path):
@@ -70,7 +70,7 @@ def test_save_deterministic(tmp_path: Path):
     g.add_edge(Edge(source="z", target="a", rel=RelType.IMPORTS))
     save_graph(g, tmp_path)
 
-    content = (tmp_path / ".semg" / "graph.jsonl").read_text()
+    content = (tmp_path / ".smg" / "graph.jsonl").read_text()
     lines = content.strip().split("\n")
     # Nodes sorted by name, then edges
     assert '"name":"a"' in lines[0]

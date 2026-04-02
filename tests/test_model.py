@@ -1,6 +1,6 @@
 import json
 
-from semg.model import Edge, Node, NodeType, RelType
+from smg.model import Edge, Node, NodeType, RelType
 
 
 def test_node_type_known():

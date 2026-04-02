@@ -1,7 +1,7 @@
 import pytest
 
-from semg.graph import NodeNotFoundError, SemGraph
-from semg.model import Edge, Node, NodeType, RelType
+from smg.graph import NodeNotFoundError, SemGraph
+from smg.model import Edge, Node, NodeType, RelType
 
 
 def _make_graph() -> SemGraph:

@@ -9,10 +9,10 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
-from semg import export, query
-from semg.graph import NodeNotFoundError, SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg.storage import find_root, init_project, load_graph, save_graph
+from smg import export, query
+from smg.graph import NodeNotFoundError, SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg.storage import find_root, init_project, load_graph, save_graph
 
 # Exit codes
 EXIT_OK = 0
@@ -31,7 +31,7 @@ click.rich_click.STYLE_COMMAND = "bold cyan"
 click.rich_click.STYLE_SWITCH = "bold green"
 click.rich_click.STYLE_METAVAR = "dim"
 click.rich_click.COMMAND_GROUPS = {
-    "semg": [
+    "smg": [
         {"name": "Explore", "commands": ["about", "usages", "impact", "between", "overview", "diff", "analyze"]},
         {"name": "Inspect", "commands": ["show", "list", "status", "query", "validate"]},
         {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan", "watch", "batch"]},
@@ -43,7 +43,7 @@ click.rich_click.COMMAND_GROUPS = {
 def _load() -> tuple[SemGraph, Path]:
     root = find_root()
     if root is None:
-        err_console.print("[red]Error:[/] no .semg/ found. Run [bold]semg init[/] first.")
+        err_console.print("[red]Error:[/] no .smg/ found. Run [bold]smg init[/] first.")
         sys.exit(EXIT_NO_PROJECT)
     return load_graph(root), root
 
@@ -125,19 +125,19 @@ def _rel_style(rel_val: str) -> str:
 
 
 @click.group()
-@click.version_option(package_name="semg")
+@click.version_option(package_name="smg")
 def main() -> None:
-    """[bold]semg[/] — semantic graph for software architecture.
+    """[bold]smg[/] — semantic graph for software architecture.
 
     Turns your codebase into a queryable graph of modules, classes, functions,
     and their relationships. Built for agents and humans.
 
     \b
     Quick start:
-      semg init              # initialize in any project
-      semg scan src/         # auto-populate from source (Python/JS/TS/Zig)
-      semg about MyClass     # ask questions
-      semg analyze           # deep architectural analysis
+      smg init              # initialize in any project
+      smg scan src/         # auto-populate from source (Python/JS/TS/Zig)
+      smg about MyClass     # ask questions
+      smg analyze           # deep architectural analysis
 
     Output is automatically JSON when piped, rich text in terminal.
     """
@@ -149,13 +149,13 @@ def main() -> None:
 
 @main.command()
 def init() -> None:
-    """Initialize [bold].semg/[/] in the current directory.
+    """Initialize [bold].smg/[/] in the current directory.
 
-    Creates a .semg/ directory with an empty graph. Run this once per project,
-    then use [bold]semg scan[/] to populate.
+    Creates a .smg/ directory with an empty graph. Run this once per project,
+    then use [bold]smg scan[/] to populate.
     """
     root = init_project()
-    console.print(f"[green]Initialized[/] .semg/ in {root}")
+    console.print(f"[green]Initialized[/] .smg/ in {root}")
 
 
 @main.command()
@@ -172,9 +172,9 @@ def add(type: str, name: str, file_: str | None, line: int | None, doc: str | No
     Node types: package, module, class, function, method, interface,
                 variable, constant, type, endpoint, config (or any custom string)
     Examples:
-      semg add module app.auth
-      semg add class app.auth.AuthService --file src/auth.py --line 12
-      semg add endpoint /api/login --doc "Login endpoint" --meta method=POST
+      smg add module app.auth
+      smg add class app.auth.AuthService --file src/auth.py --line 12
+      smg add endpoint /api/login --doc "Login endpoint" --meta method=POST
     """
     graph, root = _load()
     metadata = _parse_meta(meta)
@@ -205,9 +205,9 @@ def link(source: str, rel: str, target: str, meta: tuple[str, ...]) -> None:
                         imports, returns, accepts, overrides, decorates, tests
                         (or any custom string)
     Examples:
-      semg link app.auth calls app.db
-      semg link app.auth.Service inherits app.base.Base
-      semg link app.routes depends_on app.auth
+      smg link app.auth calls app.db
+      smg link app.auth.Service inherits app.base.Base
+      smg link app.routes depends_on app.auth
     """
     graph, root = _load()
     source = _resolve_or_exit(graph, source)
@@ -229,7 +229,7 @@ def link(source: str, rel: str, target: str, meta: tuple[str, ...]) -> None:
 def rm(name: str) -> None:
     """Remove a node and all its edges (cascade delete).
 
-    Short names work: [bold]semg rm AuthService[/] resolves to the full name if unambiguous.
+    Short names work: [bold]smg rm AuthService[/] resolves to the full name if unambiguous.
     """
     graph, root = _load()
     name = _resolve_or_exit(graph, name)
@@ -250,7 +250,7 @@ def unlink(source: str, rel: str, target: str) -> None:
     """Remove a specific edge.
 
     \b
-    Example: semg unlink app.auth calls app.db
+    Example: smg unlink app.auth calls app.db
     """
     graph, root = _load()
     source = _resolve_or_exit(graph, source)
@@ -275,7 +275,7 @@ def update(name: str, type_: str | None, file_: str | None, line: int | None, do
     """Update a node's fields (only specified fields are changed).
 
     \b
-    Example: semg update app.auth --doc "Auth module" --meta owner=alice
+    Example: smg update app.auth --doc "Auth module" --meta owner=alice
     """
     graph, root = _load()
     name = _resolve_or_exit(graph, name)
@@ -310,7 +310,7 @@ def about(name: str, depth: int, fmt: str | None) -> None:
       --depth 0  Identity only (name, type, file, docstring)
       --depth 1  + connections (incoming/outgoing edges, containment path)
       --depth 2  + 2-hop neighborhood (all nearby nodes)
-    Short names work: semg about SemGraph → semg.graph.SemGraph
+    Short names work: smg about SemGraph → smg.graph.SemGraph
     """
     import json as json_mod
 
@@ -407,8 +407,8 @@ def usages(name: str, rel: str | None, fmt: str | None) -> None:
 
     \b
     Examples:
-      semg usages SemGraph               # all usages of SemGraph
-      semg usages add_node --rel calls   # only call sites
+      smg usages SemGraph               # all usages of SemGraph
+      smg usages add_node --rel calls   # only call sites
     """
     import json as json_mod
 
@@ -477,7 +477,7 @@ def impact(name: str, depth: int | None, fmt: str | None) -> None:
     to find every node that could be affected by a change to X.
 
     \b
-    Example: semg impact auth.service
+    Example: smg impact auth.service
     """
     import json as json_mod
 
@@ -514,7 +514,7 @@ def between(a: str, b: str, fmt: str | None) -> None:
     """How do A and B relate? Shortest path + direct edges.
 
     \b
-    Example: semg between api.routes db.models
+    Example: smg between api.routes db.models
     """
     import json as json_mod
 
@@ -633,7 +633,7 @@ def overview(top_n: int, fmt: str | None) -> None:
 def show(name: str, fmt: str | None) -> None:
     """Show a node's details, connections, and metrics.
 
-    Short names work: [bold]semg show SemGraph[/] resolves if unambiguous.
+    Short names work: [bold]smg show SemGraph[/] resolves if unambiguous.
     Functions/methods include cyclomatic complexity, fan-in/fan-out, etc.
     """
     graph, _root = _load()
@@ -687,7 +687,7 @@ def list_nodes(type_: str | None, fmt: str | None) -> None:
     """List all nodes in the graph.
 
     \b
-    Filter by type: semg list --type class
+    Filter by type: smg list --type class
     Valid types: package, module, class, function, method, interface,
                  variable, constant, type, endpoint, config
     """
@@ -886,9 +886,9 @@ def export_cmd() -> None:
 
     \b
     Examples:
-      semg export mermaid                         # paste into markdown
-      semg export dot | dot -Tpng -o graph.png    # render with Graphviz
-      semg export json --indent > graph.json      # machine-readable
+      smg export mermaid                         # paste into markdown
+      smg export dot | dot -Tpng -o graph.png    # render with Graphviz
+      smg export json --indent > graph.json      # machine-readable
     """
     pass
 
@@ -953,7 +953,7 @@ def diff(ref: str, fmt: str | None) -> None:
     """
     import json as json_mod
 
-    from semg.diff import GraphDiff, diff_graphs, load_graph_from_git
+    from smg.diff import GraphDiff, diff_graphs, load_graph_from_git
 
     graph, root = _load()
     fmt = _auto_fmt(fmt)
@@ -1053,29 +1053,32 @@ def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | Non
     \b
     Runs: cycle detection, PageRank, betweenness centrality, k-core,
     CK class metrics (WMC/CBO/RFC/LCOM4/DIT/NOC), Martin's package
-    metrics (I/A/D), SDP violations, and synthesized hotspot ranking.
+    metrics (I/A/D), SDP violations, fan-in/fan-out, dead code detection,
+    layering violations, code smells (God Class, Feature Envy, Shotgun
+    Surgery), and synthesized hotspot ranking.
 
     \b
     Examples:
-      semg analyze                        # full analysis
-      semg analyze --module bellman       # scope to bellman.* nodes
-      semg analyze --summary --top 5     # just hotspots and key findings
-      semg analyze --format json         # structured output for agents
+      smg analyze                        # full analysis
+      smg analyze --module bellman       # scope to bellman.* nodes
+      smg analyze --summary --top 5     # just hotspots and key findings
+      smg analyze --format json         # structured output for agents
 
     \b
     JSON output keys: hotspots, graph, pagerank, betweenness,
-    kcore (with members), classes, modules, sdp_violations
+    kcore (with members), classes, modules, sdp_violations,
+    fan_in_out, dead_code, layering_violations, smells
     """
     import json as json_mod
 
-    from semg import graph_metrics, oo_metrics
+    from smg import graph_metrics, oo_metrics
 
     graph, _root = _load()
     fmt = _auto_fmt(fmt)
 
     # Scope to a module prefix if requested
     if module_filter:
-        from semg.query import subgraph as _subgraph
+        from smg.query import subgraph as _subgraph
         # Build a scoped graph: all nodes whose name starts with the prefix
         scoped = SemGraph()
         prefix = module_filter if module_filter.endswith(".") else module_filter + "."
@@ -1124,6 +1127,16 @@ def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | Non
     martin_data = oo_metrics.martin_metrics(graph)
     _step("Checking SDP violations...")
     sdp = oo_metrics.sdp_violations(graph)
+    _step("Computing fan-in/fan-out...")
+    fio = graph_metrics.fan_in_out(graph)
+    _step("Detecting dead code...")
+    dead = graph_metrics.dead_code(graph)
+    _step("Checking layering violations...")
+    layer_violations = graph_metrics.layering_violations(graph)
+    _step("Detecting code smells...")
+    gods = oo_metrics.god_classes(graph)
+    envy = oo_metrics.feature_envy(graph)
+    shotgun = oo_metrics.shotgun_surgery(graph)
     _step("Computing hotspots...")
 
     if use_progress:
@@ -1207,6 +1220,16 @@ def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | Non
             }
             data["modules"] = martin_data
         data["sdp_violations"] = sdp
+        data["dead_code"] = dead
+        data["layering_violations"] = layer_violations
+        data["smells"] = {
+            "god_classes": gods,
+            "feature_envy": envy,
+            "shotgun_surgery": shotgun,
+        }
+        if not summary:
+            fio_top = sorted(fio.items(), key=lambda x: x[1]["fan_in"] + x[1]["fan_out"], reverse=True)[:top_n]
+            data["fan_in_out"] = [{"name": n, **v} for n, v in fio_top]
         click.echo(json_mod.dumps(data, indent=2))
         return
 
@@ -1249,6 +1272,40 @@ def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | Non
             )
     else:
         console.print(f"\n[green]No SDP violations[/]")
+
+    # Dead code
+    if dead:
+        console.print(f"\n[yellow bold]Dead Code[/] ({len(dead)} unreferenced node(s))")
+        for name in dead[:top_n]:
+            node = graph.get_node(name)
+            type_label = node.type.value if node else "?"
+            console.print(f"  [yellow]-[/] {name} [dim]({type_label})[/]")
+        if len(dead) > top_n:
+            console.print(f"  [dim]... and {len(dead) - top_n} more[/]")
+    else:
+        console.print("\n[green]No dead code detected[/]")
+
+    # Layering violations
+    if layer_violations:
+        console.print(f"\n[yellow bold]Layering Violations[/] ({len(layer_violations)} back-dependency edge(s))")
+        for v in layer_violations[:top_n]:
+            console.print(
+                f"  [yellow]-[/] {v['source']} [dim](L{v['source_layer']})[/]"
+                f" --{v['rel']}--> {v['target']} [dim](L{v['target_layer']})[/]"
+            )
+        if len(layer_violations) > top_n:
+            console.print(f"  [dim]... and {len(layer_violations) - top_n} more[/]")
+
+    # Code smells
+    if gods or envy or shotgun:
+        smell_count = len(gods) + len(envy) + len(shotgun)
+        console.print(f"\n[red bold]Code Smells[/] ({smell_count})")
+        for gc in gods[:3]:
+            console.print(f"  [red]God Class:[/] {gc['name']} [dim](WMC={gc['wmc']}, CBO={gc['cbo']}, LCOM4={gc['lcom4']})[/]")
+        for fe in envy[:3]:
+            console.print(f"  [red]Feature Envy:[/] {fe['method']} envies {fe['envied_class']} [dim]({fe['envied_refs']} refs vs {fe['own_refs']} own)[/]")
+        for ss in shotgun[:3]:
+            console.print(f"  [red]Shotgun Surgery:[/] {ss['name']} [dim](fan-out={ss['fan_out']})[/]")
 
     if summary:
         # Summary mode: just hotspots + cycles + violations, done
@@ -1336,6 +1393,20 @@ def analyze(top_n: int, module_filter: str | None, summary: bool, fmt: str | Non
             )
         console.print(mod_table)
 
+    # Fan-in/Fan-out (top nodes by total coupling)
+    if fio:
+        console.print(f"\n[bold]Fan-In / Fan-Out (top {top_n})[/]")
+        fio_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
+        fio_table.add_column("Name", style="bold")
+        fio_table.add_column("Fan-In", justify="right")
+        fio_table.add_column("Fan-Out", justify="right")
+        fio_table.add_column("Total", justify="right")
+        fio_sorted = sorted(fio.items(), key=lambda x: x[1]["fan_in"] + x[1]["fan_out"], reverse=True)
+        for name, vals in fio_sorted[:top_n]:
+            total = vals["fan_in"] + vals["fan_out"]
+            fio_table.add_row(name, str(vals["fan_in"]), str(vals["fan_out"]), str(total))
+        console.print(fio_table)
+
 
 # --- Scan ---
 
@@ -1357,17 +1428,17 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
 
     \b
     Examples:
-      semg scan src/                 # full scan
-      semg scan src/ --clean         # remove stale nodes, then rescan
-      semg scan --changed            # only files changed since last commit
-      semg scan --since HEAD~3       # only files changed in last 3 commits
+      smg scan src/                 # full scan
+      smg scan src/ --clean         # remove stale nodes, then rescan
+      smg scan --changed            # only files changed since last commit
+      smg scan --since HEAD~3       # only files changed in last 3 commits
     Manual nodes/edges (source=manual) are preserved across --clean rescans.
     """
     try:
-        from semg.scan import changed_files, scan_paths
+        from smg.scan import changed_files, scan_paths
     except ImportError:
         err_console.print(
-            "[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install semg\\[scan][/]"
+            "[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install smg\\[scan][/]"
         )
         sys.exit(EXIT_VALIDATION)
 
@@ -1467,10 +1538,10 @@ def watch(paths: tuple[str, ...], debounce: float) -> None:
     until interrupted with Ctrl+C.
     """
     try:
-        from semg.watch import watch_and_scan
+        from smg.watch import watch_and_scan
     except ImportError:
         err_console.print(
-            "[red]Error:[/] watchdog not installed. Install with: [bold]uv pip install semg\\[scan][/]"
+            "[red]Error:[/] watchdog not installed. Install with: [bold]uv pip install smg\\[scan][/]"
         )
         sys.exit(EXIT_VALIDATION)
 

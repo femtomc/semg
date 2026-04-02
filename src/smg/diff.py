@@ -4,9 +4,9 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node
-from semg.storage import GRAPH_FILE, SEMG_DIR, load_graph
+from smg.graph import SemGraph
+from smg.model import Edge, Node
+from smg.storage import GRAPH_FILE, SMG_DIR, load_graph
 
 
 @dataclass
@@ -86,7 +86,7 @@ def load_graph_from_git(root: Path, ref: str = "HEAD") -> SemGraph | None:
 
     Returns None if the file doesn't exist at that ref.
     """
-    graph_path = f"{SEMG_DIR}/{GRAPH_FILE}"
+    graph_path = f"{SMG_DIR}/{GRAPH_FILE}"
     try:
         result = subprocess.run(
             ["git", "show", f"{ref}:{graph_path}"],

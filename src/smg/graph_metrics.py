@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from collections import defaultdict, deque
 
-from semg.graph import SemGraph
-from semg.model import RelType
+from smg.graph import SemGraph
+from smg.model import RelType
 
 # Edge types that represent coupling (not containment/annotation)
 _COUPLING_RELS = frozenset({
@@ -395,3 +395,109 @@ def detect_bridges(graph: SemGraph) -> list[tuple[str, str]]:
                         bridges.append((min(parent_node, v), max(parent_node, v)))
 
     return sorted(bridges)
+
+
+# --- Fan-in / Fan-out ---
+
+
+def fan_in_out(graph: SemGraph) -> dict[str, dict[str, int]]:
+    """Compute fan-in and fan-out for each node in the coupling graph.
+
+    Fan-in = number of distinct incoming coupling edges.
+    Fan-out = number of distinct outgoing coupling edges.
+    Returns dict keyed by node name with {"fan_in": int, "fan_out": int}.
+    """
+    fwd, rev, nodes = _coupling_adj(graph)
+    result: dict[str, dict[str, int]] = {}
+    for node in sorted(nodes):
+        result[node] = {
+            "fan_in": len(rev.get(node, set())),
+            "fan_out": len(fwd.get(node, set())),
+        }
+    return result
+
+
+# --- Dead code detection ---
+
+
+def dead_code(
+    graph: SemGraph,
+    entry_points: set[str] | None = None,
+) -> list[str]:
+    """Find nodes with zero incoming coupling edges (potential dead code).
+
+    Excludes:
+    - Modules and packages (structural containers, not callable code)
+    - Nodes explicitly listed in entry_points
+    - Nodes whose type is 'endpoint' or 'config' (presumed externally invoked)
+
+    Returns sorted list of node names.
+    """
+    from smg.model import NodeType
+
+    _STRUCTURAL_TYPES = frozenset({
+        NodeType.MODULE.value,
+        NodeType.PACKAGE.value,
+    })
+    _ENTRY_TYPES = frozenset({
+        NodeType.ENDPOINT.value,
+        NodeType.CONFIG.value,
+    })
+
+    if entry_points is None:
+        entry_points = set()
+
+    _, rev, coupling_nodes = _coupling_adj(graph)
+
+    dead: list[str] = []
+    for node in graph.all_nodes():
+        name = node.name
+        # Skip structural / entry-point types
+        if node.type.value in _STRUCTURAL_TYPES:
+            continue
+        if node.type.value in _ENTRY_TYPES:
+            continue
+        if name in entry_points:
+            continue
+        # Dead if the node participates in coupling but has no incoming,
+        # OR if the node has no coupling edges at all (truly isolated)
+        incoming = rev.get(name, set())
+        if len(incoming) == 0:
+            dead.append(name)
+
+    return sorted(dead)
+
+
+# --- Layering violations ---
+
+
+def layering_violations(graph: SemGraph) -> list[dict]:
+    """Find coupling edges where the source is at the same or lower layer than the target.
+
+    In a well-layered architecture, dependencies should flow strictly
+    downward (higher layer depends on lower layer). Edges where
+    layer(source) <= layer(target) indicate back-dependencies —
+    either cycle-participating edges or architectural inversions.
+
+    Returns list of dicts with source, target, rel, source_layer, target_layer.
+    """
+    layers = topological_layers(graph)
+    if not layers:
+        return []
+
+    violations: list[dict] = []
+    for edge in graph.all_edges():
+        if edge.rel.value not in _COUPLING_RELS:
+            continue
+        sl = layers.get(edge.source)
+        tl = layers.get(edge.target)
+        if sl is not None and tl is not None and sl <= tl:
+            violations.append({
+                "source": edge.source,
+                "target": edge.target,
+                "rel": edge.rel.value,
+                "source_layer": sl,
+                "target_layer": tl,
+            })
+
+    return sorted(violations, key=lambda v: (v["target_layer"] - v["source_layer"], v["source"]))

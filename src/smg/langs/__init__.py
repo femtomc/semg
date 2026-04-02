@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from semg.model import Edge, Node
+from smg.model import Edge, Node
 
 if TYPE_CHECKING:
-    from semg.metrics import BranchMap
+    from smg.metrics import BranchMap
 
 
 @dataclass
@@ -40,18 +40,18 @@ def load_extractors() -> None:
     """Import all lang modules to trigger registration. Silently skip missing grammars."""
     # Each module catches its own ImportError if the grammar isn't installed
     try:
-        from semg.langs import python as _  # noqa: F401
+        from smg.langs import python as _  # noqa: F401
     except ImportError:
         pass
     try:
-        from semg.langs import javascript as _  # noqa: F401, F811
+        from smg.langs import javascript as _  # noqa: F401, F811
     except ImportError:
         pass
     try:
-        from semg.langs import zig as _  # noqa: F401, F811
+        from smg.langs import zig as _  # noqa: F401, F811
     except ImportError:
         pass
     try:
-        from semg.langs import c as _  # noqa: F401, F811
+        from smg.langs import c as _  # noqa: F401, F811
     except ImportError:
         pass

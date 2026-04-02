@@ -9,5 +9,5 @@ wheels/
 # Virtual environments
 .venv
 
-# semg project-local graph data
-.semg/
+# smg project-local graph data
+.smg/

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections import deque
 
-from semg.graph import SemGraph
-from semg.model import Edge, RelType
+from smg.graph import SemGraph
+from smg.model import Edge, RelType
 
 
 def transitive_deps(

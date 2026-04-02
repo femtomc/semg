@@ -1,5 +1,5 @@
 [project]
-name = "semg"
+name = "smg"
 version = "0.1.0"
 description = "Semantic graph for software architecture — built for agents and humans"
 readme = "README.md"
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-semg = "semg.cli:main"
+smg = "smg.cli:main"
 
 [project.optional-dependencies]
 scan = [

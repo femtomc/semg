@@ -4,7 +4,7 @@ import os
 
 from click.testing import CliRunner
 
-from semg.cli import main
+from smg.cli import main
 
 
 def _init_runner(tmp_path):

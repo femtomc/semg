@@ -1,8 +1,8 @@
 import json
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg import export
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg import export
 
 
 def _sample_graph() -> SemGraph:
@@ -51,7 +51,7 @@ def test_to_mermaid():
 def test_to_dot():
     g = _sample_graph()
     d = export.to_dot(g)
-    assert d.startswith("digraph semg {")
+    assert d.startswith("digraph smg {")
     assert 'label="contains"' in d
     assert d.strip().endswith("}")
 

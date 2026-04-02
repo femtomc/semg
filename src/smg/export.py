@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import re
 
-from semg.graph import SemGraph
-from semg.model import Edge, Node
+from smg.graph import SemGraph
+from smg.model import Edge, Node
 
 
 def to_json(graph: SemGraph, indent: bool = False) -> str:
@@ -71,7 +71,7 @@ def to_mermaid(graph: SemGraph) -> str:
 
 def to_dot(graph: SemGraph) -> str:
     """Graphviz DOT syntax."""
-    lines: list[str] = ["digraph semg {", "    rankdir=LR;"]
+    lines: list[str] = ["digraph smg {", "    rankdir=LR;"]
 
     for node in graph.all_nodes():
         did = _dot_id(node.name)

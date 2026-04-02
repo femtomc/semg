@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from semg.graph import SemGraph
-from semg.model import NodeType, RelType
+from smg.graph import SemGraph
+from smg.model import NodeType, RelType
 
 _COUPLING_RELS = frozenset({
     RelType.CALLS.value,
@@ -316,3 +316,121 @@ def sdp_violations(graph: SemGraph) -> list[dict]:
                     })
 
     return sorted(violations, key=lambda v: v["target_instability"] - v["source_instability"], reverse=True)
+
+
+# --- Code Smell Detection ---
+
+
+def god_classes(
+    graph: SemGraph,
+    wmc_threshold: int = 20,
+    cbo_threshold: int = 5,
+    lcom_threshold: int = 2,
+) -> list[dict]:
+    """Detect God Classes: high complexity AND high coupling AND low cohesion.
+
+    A God Class has too many responsibilities. Detected when ALL of:
+    - WMC (weighted methods) >= wmc_threshold
+    - CBO (coupling to other classes) >= cbo_threshold
+    - LCOM4 (connected components) >= lcom_threshold
+
+    Returns list of dicts with name and metric values.
+    """
+    wmc_data = wmc(graph)
+    cbo_data = cbo(graph)
+    lcom_data = lcom4(graph)
+
+    results: list[dict] = []
+    for name in wmc_data:
+        w = wmc_data.get(name, 0)
+        c = cbo_data.get(name, 0)
+        l = lcom_data.get(name, 0)
+        if w >= wmc_threshold and c >= cbo_threshold and l >= lcom_threshold:
+            results.append({
+                "name": name,
+                "wmc": w,
+                "cbo": c,
+                "lcom4": l,
+            })
+
+    return sorted(results, key=lambda r: r["wmc"], reverse=True)
+
+
+def feature_envy(graph: SemGraph) -> list[dict]:
+    """Detect Feature Envy: methods that reference more members of another class than their own.
+
+    A method has Feature Envy when it makes more calls to methods/fields
+    of some external class than to members of its own class. This suggests
+    the method may belong in the other class.
+
+    Returns list of dicts with method, own_class, envied_class, own_refs, envied_refs.
+    """
+    results: list[dict] = []
+
+    for node in graph.all_nodes(type=NodeType.CLASS):
+        own_members = set(_class_members(graph, node.name))
+        methods = _class_methods(graph, node.name)
+
+        for method in methods:
+            # Count outgoing coupling edges by target class
+            own_refs = 0
+            external_refs: dict[str, int] = defaultdict(int)
+
+            for edge in graph.outgoing(method):
+                if edge.rel.value not in _COUPLING_RELS:
+                    continue
+                if edge.target in own_members or edge.target == node.name:
+                    own_refs += 1
+                else:
+                    target_class = _containing_class(graph, edge.target)
+                    if target_class and target_class != node.name:
+                        external_refs[target_class] += 1
+
+            if not external_refs:
+                continue
+
+            # Find the most-referenced external class
+            envied, envied_count = max(external_refs.items(), key=lambda x: x[1])
+            if envied_count > own_refs and envied_count >= 2:
+                results.append({
+                    "method": method,
+                    "own_class": node.name,
+                    "envied_class": envied,
+                    "own_refs": own_refs,
+                    "envied_refs": envied_count,
+                })
+
+    return sorted(results, key=lambda r: r["envied_refs"] - r["own_refs"], reverse=True)
+
+
+def shotgun_surgery(
+    graph: SemGraph,
+    fan_out_threshold: int = 7,
+) -> list[dict]:
+    """Detect Shotgun Surgery: functions/methods with high coupling fan-out.
+
+    A change to a node with high fan-out likely requires coordinated
+    changes across many other nodes. This makes the code fragile.
+
+    Returns list of dicts with name, type, fan_out, targets.
+    """
+    results: list[dict] = []
+
+    for node in graph.all_nodes():
+        if node.type.value not in ("function", "method"):
+            continue
+
+        targets: set[str] = set()
+        for edge in graph.outgoing(node.name):
+            if edge.rel.value in _COUPLING_RELS:
+                targets.add(edge.target)
+
+        if len(targets) >= fan_out_threshold:
+            results.append({
+                "name": node.name,
+                "type": node.type.value,
+                "fan_out": len(targets),
+                "targets": sorted(targets),
+            })
+
+    return sorted(results, key=lambda r: r["fan_out"], reverse=True)

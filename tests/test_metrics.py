@@ -52,7 +52,7 @@ def _ts_func_node(code: str):
 
 @needs_python
 def test_py_simple_function():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("def f():\n    pass\n")
     m = compute_metrics(node, PYTHON_BRANCH_MAP)
@@ -66,7 +66,7 @@ def test_py_simple_function():
 
 @needs_python
 def test_py_if_else():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f(x):
@@ -82,7 +82,7 @@ def f(x):
 
 @needs_python
 def test_py_if_elif_else():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f(x):
@@ -99,7 +99,7 @@ def f(x):
 
 @needs_python
 def test_py_nested_loops():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f(matrix):
@@ -117,7 +117,7 @@ def f(matrix):
 
 @needs_python
 def test_py_boolean_operators():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f(x, y):
@@ -130,7 +130,7 @@ def f(x, y):
 
 @needs_python
 def test_py_try_except():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f():
@@ -147,7 +147,7 @@ def f():
 
 @needs_python
 def test_py_parameters():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("def f(a, b, c=1, *args, **kwargs):\n    pass\n")
     m = compute_metrics(node, PYTHON_BRANCH_MAP)
@@ -156,7 +156,7 @@ def test_py_parameters():
 
 @needs_python
 def test_py_lines_of_code():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("""\
 def f():
@@ -172,7 +172,7 @@ def f():
 
 @needs_python
 def test_py_to_dict():
-    from semg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+    from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
 
     node = _py_func_node("def f():\n    pass\n")
     m = compute_metrics(node, PYTHON_BRANCH_MAP)
@@ -188,7 +188,7 @@ def test_py_to_dict():
 
 @needs_ts
 def test_ts_simple_function():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("function f(): void {}\n")
     m = compute_metrics(node, JS_BRANCH_MAP)
@@ -198,7 +198,7 @@ def test_ts_simple_function():
 
 @needs_ts
 def test_ts_if_else():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("""\
 function f(x: number): number {
@@ -216,7 +216,7 @@ function f(x: number): number {
 
 @needs_ts
 def test_ts_logical_operators():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("""\
 function f(x: number, y: number): void {
@@ -230,7 +230,7 @@ function f(x: number, y: number): void {
 
 @needs_ts
 def test_ts_switch():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("""\
 function f(x: number): string {
@@ -247,7 +247,7 @@ function f(x: number): string {
 
 @needs_ts
 def test_ts_nested_control_flow():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("""\
 function f(items: number[]): void {
@@ -267,7 +267,7 @@ function f(items: number[]): void {
 
 @needs_ts
 def test_ts_ternary():
-    from semg.metrics import JS_BRANCH_MAP, compute_metrics
+    from smg.metrics import JS_BRANCH_MAP, compute_metrics
 
     node = _ts_func_node("""\
 function f(x: number): number {
@@ -283,8 +283,8 @@ function f(x: number): number {
 
 @needs_python
 def test_scan_attaches_metrics(tmp_path):
-    from semg.scan import scan_paths
-    from semg.storage import init_project, load_graph
+    from smg.scan import scan_paths
+    from smg.storage import init_project, load_graph
 
     root = tmp_path
     pkg = root / "src" / "app"
@@ -314,8 +314,8 @@ def complex_func(x, y):
 
 @needs_python
 def test_scan_fan_in_fan_out(tmp_path):
-    from semg.scan import scan_paths
-    from semg.storage import init_project, load_graph
+    from smg.scan import scan_paths
+    from smg.storage import init_project, load_graph
 
     root = tmp_path
     pkg = root / "src" / "app"

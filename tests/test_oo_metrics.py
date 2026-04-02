@@ -1,7 +1,7 @@
 """Tests for object-oriented and module-level metrics."""
-from semg.graph import SemGraph
-from semg.model import Edge, Node, NodeType, RelType
-from semg.oo_metrics import cbo, dit, lcom4, martin_metrics, noc, rfc, sdp_violations, wmc
+from smg.graph import SemGraph
+from smg.model import Edge, Node, NodeType, RelType
+from smg.oo_metrics import cbo, dit, lcom4, martin_metrics, noc, rfc, sdp_violations, wmc
 
 
 def _node(name: str, t: NodeType = NodeType.MODULE, **kwargs) -> Node:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from semg.model import Edge, Node, NodeType, RelType
+from smg.model import Edge, Node, NodeType, RelType
 
 
 class NodeNotFoundError(KeyError):
