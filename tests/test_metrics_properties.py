@@ -26,6 +26,14 @@ from smg.oo_metrics import (
     cbo, dit, feature_envy, god_classes, lcom4, martin_metrics,
     noc, rfc, sdp_violations, shotgun_surgery, wmc,
 )
+from smg.rules import (
+    Rule,
+    check_all,
+    check_deny,
+    check_invariant,
+    check_rule,
+    parse_deny_pattern,
+)
 
 
 # --- Strategies for generating random graphs ---
@@ -925,3 +933,207 @@ class TestShotgunSurgeryProperties:
 
         results = shotgun_surgery(g)
         assert len(results) == 0
+
+
+# ============================================================
+# Rule System Properties
+# ============================================================
+
+
+# --- Strategies for generating rules ---
+
+
+@st.composite
+def random_deny_rule(draw):
+    """Generate a random deny rule with a glob pattern."""
+    prefixes = ["ui", "db", "core", "api", "lib", "n"]
+    src_prefix = draw(st.sampled_from(prefixes))
+    tgt_prefix = draw(st.sampled_from(prefixes))
+    use_rel = draw(st.booleans())
+    if use_rel:
+        rel = draw(st.sampled_from(["calls", "imports", "inherits", "depends_on"]))
+        pattern = f"{src_prefix}.* -[{rel}]-> {tgt_prefix}.*"
+    else:
+        pattern = f"{src_prefix}.* -> {tgt_prefix}.*"
+    name = draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=6))
+    return Rule(name=name, type="deny", pattern=pattern)
+
+
+@st.composite
+def random_invariant_rule(draw):
+    """Generate a random invariant rule."""
+    inv = draw(st.sampled_from(["no-cycles", "no-dead-code", "no-layering-violations"]))
+    name = draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=6))
+    params: dict = {}
+    if inv == "no-dead-code":
+        # Optionally add entry points
+        if draw(st.booleans()):
+            params["entry_points"] = "n0,n1"
+    return Rule(name=name, type="invariant", invariant=inv, params=params)
+
+
+class TestDenyRuleProperties:
+
+    @given(random_graph(), random_deny_rule())
+    @settings(max_examples=100)
+    def test_deny_violations_are_real_edges(self, g: SemGraph, rule: Rule):
+        """Every edge in a deny violation must exist in the graph."""
+        v = check_deny(rule, g)
+        if v is not None:
+            edge_keys = set(g.edges.keys())
+            for e in v.edges:
+                assert (e["source"], e["rel"], e["target"]) in edge_keys
+
+    @given(random_graph(), random_deny_rule())
+    @settings(max_examples=100)
+    def test_deny_violations_match_pattern(self, g: SemGraph, rule: Rule):
+        """Every violating edge must match the deny pattern."""
+        import fnmatch
+        v = check_deny(rule, g)
+        if v is not None:
+            src_glob, rel_filter, tgt_glob = parse_deny_pattern(rule.pattern)
+            for e in v.edges:
+                assert fnmatch.fnmatch(e["source"], src_glob)
+                assert fnmatch.fnmatch(e["target"], tgt_glob)
+                if rel_filter is not None:
+                    assert e["rel"] == rel_filter
+
+    @given(random_graph(), random_deny_rule())
+    @settings(max_examples=100)
+    def test_deny_no_false_negatives(self, g: SemGraph, rule: Rule):
+        """If check_deny returns None, no edge in the graph matches the pattern."""
+        import fnmatch
+        v = check_deny(rule, g)
+        if v is None:
+            src_glob, rel_filter, tgt_glob = parse_deny_pattern(rule.pattern)
+            coupling_rels = {"calls", "imports", "inherits", "implements", "depends_on"}
+            for edge in g.all_edges():
+                if rel_filter is not None:
+                    if edge.rel.value != rel_filter:
+                        continue
+                elif edge.rel.value not in coupling_rels:
+                    continue
+                matches = (fnmatch.fnmatch(edge.source, src_glob)
+                           and fnmatch.fnmatch(edge.target, tgt_glob))
+                assert not matches, f"edge {edge.source} --{edge.rel.value}--> {edge.target} matches but was not reported"
+
+    @given(random_graph())
+    @settings(max_examples=100)
+    def test_deny_wildcard_catches_all_coupling(self, g: SemGraph):
+        """A deny rule '* -> *' catches every coupling edge."""
+        rule = Rule(name="all", type="deny", pattern="* -> *")
+        v = check_deny(rule, g)
+        coupling_rels = {"calls", "imports", "inherits", "implements", "depends_on"}
+        coupling_count = sum(1 for e in g.all_edges() if e.rel.value in coupling_rels)
+        if coupling_count > 0:
+            assert v is not None
+            assert len(v.edges) == coupling_count
+        else:
+            assert v is None
+
+
+class TestInvariantRuleProperties:
+
+    @given(random_graph(), random_invariant_rule())
+    @settings(max_examples=100)
+    def test_invariant_never_crashes(self, g: SemGraph, rule: Rule):
+        """Invariant checks should never raise on any valid graph."""
+        v = check_invariant(rule, g)
+        if v is not None:
+            assert v.rule_name == rule.name
+
+    @given(random_graph())
+    @settings(max_examples=100)
+    def test_no_cycles_agrees_with_find_cycles(self, g: SemGraph):
+        """The no-cycles invariant should agree with find_cycles."""
+        rule = Rule(name="test", type="invariant", invariant="no-cycles")
+        v = check_invariant(rule, g)
+        cycles = find_cycles(g)
+        if cycles:
+            assert v is not None
+            assert v.cycles == cycles
+        else:
+            assert v is None
+
+    @given(random_graph())
+    @settings(max_examples=100)
+    def test_no_layering_violations_agrees(self, g: SemGraph):
+        """The invariant should agree with layering_violations."""
+        rule = Rule(name="test", type="invariant", invariant="no-layering-violations")
+        v = check_invariant(rule, g)
+        lv = layering_violations(g)
+        if lv:
+            assert v is not None
+            assert len(v.edges) == len(lv)
+        else:
+            assert v is None
+
+    @given(random_graph())
+    @settings(max_examples=100)
+    def test_no_dead_code_agrees(self, g: SemGraph):
+        """The invariant should agree with dead_code."""
+        rule = Rule(name="test", type="invariant", invariant="no-dead-code")
+        v = check_invariant(rule, g)
+        dc = dead_code(g)
+        if dc:
+            assert v is not None
+            assert v.nodes == dc
+        else:
+            assert v is None
+
+
+class TestCheckAllProperties:
+
+    @given(random_graph(), st.lists(random_deny_rule(), min_size=0, max_size=5))
+    @settings(max_examples=100)
+    def test_check_all_violations_subset_of_rules(self, g: SemGraph, rules: list[Rule]):
+        """Every violation must correspond to one of the input rules."""
+        violations = check_all(rules, g)
+        rule_names = {r.name for r in rules}
+        for v in violations:
+            assert v.rule_name in rule_names
+
+    @given(random_graph(), st.lists(random_deny_rule(), min_size=0, max_size=5))
+    @settings(max_examples=100)
+    def test_check_all_count_bounded(self, g: SemGraph, rules: list[Rule]):
+        """Number of violations cannot exceed number of rules."""
+        violations = check_all(rules, g)
+        assert len(violations) <= len(rules)
+
+    @given(random_graph())
+    @settings(max_examples=50)
+    def test_empty_rules_no_violations(self, g: SemGraph):
+        """No rules means no violations."""
+        assert check_all([], g) == []
+
+
+class TestRuleSerializationProperties:
+
+    @given(random_deny_rule())
+    @settings(max_examples=100)
+    def test_deny_rule_round_trip(self, rule: Rule):
+        """Serializing and deserializing a deny rule preserves all fields."""
+        d = rule.to_dict()
+        r2 = Rule.from_dict(d)
+        assert r2.name == rule.name
+        assert r2.type == rule.type
+        assert r2.pattern == rule.pattern
+
+    @given(random_invariant_rule())
+    @settings(max_examples=100)
+    def test_invariant_rule_round_trip(self, rule: Rule):
+        """Serializing and deserializing an invariant rule preserves all fields."""
+        d = rule.to_dict()
+        r2 = Rule.from_dict(d)
+        assert r2.name == rule.name
+        assert r2.type == rule.type
+        assert r2.invariant == rule.invariant
+        assert r2.params == rule.params
+
+    @given(random_deny_rule())
+    @settings(max_examples=100)
+    def test_deny_pattern_always_parseable(self, rule: Rule):
+        """Every generated deny rule pattern should be parseable."""
+        src, rel, tgt = parse_deny_pattern(rule.pattern)
+        assert src
+        assert tgt

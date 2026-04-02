@@ -7,9 +7,11 @@ from pathlib import Path
 
 from smg.graph import SemGraph
 from smg.model import Edge, Node
+from smg.rules import Rule
 
 SMG_DIR = ".smg"
 GRAPH_FILE = "graph.jsonl"
+RULES_FILE = "rules"
 
 
 def find_root(start: Path | None = None) -> Path | None:
@@ -87,6 +89,42 @@ def save_graph(graph: SemGraph, root: Path) -> None:
         os.replace(tmp_path, graph_file)
     except BaseException:
         # Clean up temp file on failure
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def load_rules(root: Path) -> list[Rule]:
+    """Read .smg/rules and return a list of Rule objects."""
+    rules_file = root / SMG_DIR / RULES_FILE
+    if not rules_file.exists():
+        return []
+    rules: list[Rule] = []
+    with open(rules_file) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rules.append(Rule.from_dict(json.loads(line)))
+    return rules
+
+
+def save_rules(rules: list[Rule], root: Path) -> None:
+    """Serialize rules to .smg/rules atomically."""
+    smg_dir = root / SMG_DIR
+    rules_file = smg_dir / RULES_FILE
+
+    lines = [r.to_json() for r in sorted(rules, key=lambda r: r.name)]
+
+    fd, tmp_path = tempfile.mkstemp(dir=smg_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            for line in lines:
+                f.write(line + "\n")
+        os.replace(tmp_path, rules_file)
+    except BaseException:
         try:
             os.unlink(tmp_path)
         except OSError:
