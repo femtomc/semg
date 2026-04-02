@@ -420,21 +420,45 @@ def fan_in_out(graph: SemGraph) -> dict[str, dict[str, int]]:
 # --- Dead code detection ---
 
 
-def _is_auto_entry_point(name: str, node_type: str) -> bool:
-    """Heuristic: detect likely entry points that shouldn't be flagged as dead code."""
-    short = name.rsplit(".", 1)[-1] if "." in name else name
-    # __main__ modules and main() functions
-    if short in ("__main__", "main"):
+def _is_auto_entry_point(name: str, node: "Node") -> bool:
+    """Detect likely entry points that shouldn't be flagged as dead code.
+
+    Uses two sources: explicit metadata from extractors (language-aware)
+    and language-agnostic naming heuristics. Extractors can set
+    metadata["entry_point"] = True to mark nodes as entry points.
+    """
+    # Explicit extractor annotation (preferred, language-aware)
+    if node.metadata.get("entry_point"):
         return True
-    # Test functions/classes
+
+    short = name.rsplit(".", 1)[-1] if "." in name else name
+
+    # Language-agnostic: main is an entry point in most languages
+    if short == "main":
+        return True
+
+    # Language-agnostic: constants are referenced at runtime, not via call edges
+    if node.type.value in ("constant", "variable") and short.isupper():
+        return True
+
+    # Language-agnostic: test functions/classes across conventions
+    # Python: test_*, Test*; Go: Test*; Rust: test_*; Java: *Test
     if short.startswith("test_") or short.startswith("Test"):
         return True
-    # Dunder methods (called by the runtime, not by user code)
-    if short.startswith("__") and short.endswith("__"):
-        return True
-    # Constants (UPPER_CASE) are referenced at runtime, not via call edges
-    if node_type in ("constant", "variable") and short.isupper():
-        return True
+
+    # Detect language from file extension for language-specific heuristics
+    ext = ""
+    if node.file:
+        ext = node.file.rsplit(".", 1)[-1] if "." in node.file else ""
+
+    if ext == "py":
+        # __main__ modules
+        if short == "__main__":
+            return True
+        # Dunder methods (called by runtime: __init__, __str__, etc.)
+        if short.startswith("__") and short.endswith("__"):
+            return True
+
     return False
 
 
@@ -491,7 +515,7 @@ def dead_code(
             continue
         if name in entry_points:
             continue
-        if auto_entry and _is_auto_entry_point(name, node.type.value):
+        if auto_entry and _is_auto_entry_point(name, node):
             continue
         if name in decorated:
             continue
