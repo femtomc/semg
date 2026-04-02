@@ -394,17 +394,30 @@ smg show run              # Error if multiple matches — lists candidates
 
 ## References
 
-[tarjan]: https://doi.org/10.1137/0201010 "Tarjan (1972). Depth-First Search and Linear Graph Algorithms. SIAM Journal on Computing, 1(2), 146–160."
-[pagerank]: https://doi.org/10.1016/S0169-7552(98)00110-X "Brin & Page (1998). The Anatomy of a Large-Scale Hypertextual Web Search Engine. Computer Networks, 30(1–7), 107–117."
-[brandes]: https://doi.org/10.1080/0022250X.2001.9990249 "Brandes (2001). A Faster Algorithm for Betweenness Centrality. Journal of Mathematical Sociology, 25(2), 163–177."
-[seidman]: https://doi.org/10.1016/0378-8733(83)90028-X "Seidman (1983). Network Structure and Minimum Degree. Social Networks, 5(3), 269–287."
-[mccabe]: https://doi.org/10.1109/TSE.1976.233837 "McCabe (1976). A Complexity Measure. IEEE Transactions on Software Engineering, SE-2(4), 308–320."
-[cognitive]: https://doi.org/10.1145/3194164.3194186 "Campbell (2018). Cognitive Complexity: An Overview and Evaluation. Proc. TechDebt '18, ACM."
-[ck]: https://doi.org/10.1109/32.295895 "Chidamber & Kemerer (1994). A Metrics Suite for Object Oriented Design. IEEE TSE, 20(6), 476–493."
-[martin]: https://doi.org/10.1007/978-1-4612-4316-3_9 "Martin (1994). OO Design Quality Metrics: An Analysis of Dependencies."
-[lcom4]: https://scholar.google.com/scholar?q=Hitz+Montazeri+1995+Measuring+Coupling+Cohesion "Hitz & Montazeri (1995). Measuring Coupling and Cohesion in Object-Oriented Systems."
-[fowler]: https://martinfowler.com/books/refactoring.html "Fowler (1999). Refactoring: Improving the Design of Existing Code. Addison-Wesley."
-[alloy]: https://mitpress.mit.edu/9780262017152/ "Jackson (2012). Software Abstractions: Logic, Language, and Analysis. MIT Press."
+- McCabe, T.J. (1976). [A Complexity Measure](https://doi.org/10.1109/TSE.1976.233837). *IEEE TSE*, SE-2(4), 308–320.
+- Tarjan, R.E. (1972). [Depth-First Search and Linear Graph Algorithms](https://doi.org/10.1137/0201010). *SIAM Journal on Computing*, 1(2), 146–160.
+- Seidman, S.B. (1983). [Network Structure and Minimum Degree](https://doi.org/10.1016/0378-8733(83)90028-X). *Social Networks*, 5(3), 269–287.
+- Chidamber, S.R. & Kemerer, C.F. (1994). [A Metrics Suite for Object Oriented Design](https://doi.org/10.1109/32.295895). *IEEE TSE*, 20(6), 476–493.
+- Martin, R.C. (1994). [OO Design Quality Metrics: An Analysis of Dependencies](https://doi.org/10.1007/978-1-4612-4316-3_9). *OOPSLA '94 Workshop*.
+- Hitz, M. & Montazeri, B. (1995). [Measuring Coupling and Cohesion in Object-Oriented Systems](https://scholar.google.com/scholar?q=Hitz+Montazeri+1995+Measuring+Coupling+Cohesion). *Proc. ISACC '95*.
+- Brin, S. & Page, L. (1998). [The Anatomy of a Large-Scale Hypertextual Web Search Engine](https://doi.org/10.1016/S0169-7552(98)00110-X). *Computer Networks*, 30(1–7), 107–117.
+- Fowler, M. (1999). [Refactoring: Improving the Design of Existing Code](https://martinfowler.com/books/refactoring.html). Addison-Wesley.
+- Brandes, U. (2001). [A Faster Algorithm for Betweenness Centrality](https://doi.org/10.1080/0022250X.2001.9990249). *Journal of Mathematical Sociology*, 25(2), 163–177.
+- Jackson, D. (2012). [Software Abstractions: Logic, Language, and Analysis](https://mitpress.mit.edu/9780262017152/). MIT Press.
+- Campbell, G.A. (2018). [Cognitive Complexity: An Overview and Evaluation](https://doi.org/10.1145/3194164.3194186). *Proc. TechDebt '18*, ACM.
+
+<!-- Link definitions for inline references throughout the doc -->
+[mccabe]: https://doi.org/10.1109/TSE.1976.233837
+[tarjan]: https://doi.org/10.1137/0201010
+[seidman]: https://doi.org/10.1016/0378-8733(83)90028-X
+[ck]: https://doi.org/10.1109/32.295895
+[martin]: https://doi.org/10.1007/978-1-4612-4316-3_9
+[lcom4]: https://scholar.google.com/scholar?q=Hitz+Montazeri+1995+Measuring+Coupling+Cohesion
+[pagerank]: https://doi.org/10.1016/S0169-7552(98)00110-X
+[fowler]: https://martinfowler.com/books/refactoring.html
+[brandes]: https://doi.org/10.1080/0022250X.2001.9990249
+[alloy]: https://mitpress.mit.edu/9780262017152/
+[cognitive]: https://doi.org/10.1145/3194164.3194186
 
 ## License
 
