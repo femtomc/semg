@@ -537,6 +537,84 @@ def dead_code(
     return sorted(dead)
 
 
+# --- God file detection ---
+
+
+def god_files(
+    graph: SemGraph,
+    cc_threshold: int = 50,
+    function_threshold: int = 15,
+    concern_threshold: int = 5,
+) -> list[dict]:
+    """Detect files with too much complexity or too many concerns.
+
+    A god file is flagged when ANY of:
+    - Total cyclomatic complexity across all functions >= cc_threshold
+    - Number of functions/methods >= function_threshold
+    - Number of distinct coupling targets (external files) >= concern_threshold
+      AND total CC >= cc_threshold
+
+    Returns list of dicts sorted by total complexity, each with:
+    file, total_cc, max_cc, num_functions, num_classes, concerns, reasons.
+    """
+    # Group nodes by file
+    file_nodes: dict[str, list] = defaultdict(list)
+    for node in graph.all_nodes():
+        if node.file:
+            file_nodes[node.file].append(node)
+
+    if not file_nodes:
+        return []
+
+    # Build node -> file mapping for concern counting
+    node_to_file: dict[str, str] = {}
+    for node in graph.all_nodes():
+        if node.file:
+            node_to_file[node.name] = node.file
+
+    results: list[dict] = []
+    for file_path, nodes in file_nodes.items():
+        functions = [n for n in nodes if n.type.value in ("function", "method")]
+        classes = [n for n in nodes if n.type.value == "class"]
+
+        total_cc = 0
+        max_cc = 0
+        for fn in functions:
+            cc = fn.metadata.get("metrics", {}).get("cyclomatic_complexity", 1)
+            total_cc += cc
+            max_cc = max(max_cc, cc)
+
+        # Count distinct external files this file's nodes couple to
+        external_files: set[str] = set()
+        for node in nodes:
+            for edge in graph.outgoing(node.name):
+                if edge.rel.value in _COUPLING_RELS:
+                    target_file = node_to_file.get(edge.target)
+                    if target_file and target_file != file_path:
+                        external_files.add(target_file)
+
+        reasons: list[str] = []
+        if total_cc >= cc_threshold:
+            reasons.append(f"high total complexity (CC={total_cc})")
+        if len(functions) >= function_threshold:
+            reasons.append(f"many functions ({len(functions)})")
+        if len(external_files) >= concern_threshold and total_cc >= cc_threshold:
+            reasons.append(f"many concerns ({len(external_files)} external files)")
+
+        if reasons:
+            results.append({
+                "file": file_path,
+                "total_cc": total_cc,
+                "max_cc": max_cc,
+                "num_functions": len(functions),
+                "num_classes": len(classes),
+                "concerns": len(external_files),
+                "reasons": reasons,
+            })
+
+    return sorted(results, key=lambda r: r["total_cc"], reverse=True)
+
+
 # --- Layering violations ---
 
 

@@ -1206,6 +1206,8 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
     gods = oo_metrics.god_classes(graph)
     envy = oo_metrics.feature_envy(graph)
     shotgun = oo_metrics.shotgun_surgery(graph)
+    _step("Detecting god files...")
+    god_files = graph_metrics.god_files(graph)
     _step("Computing hotspots...")
 
     if use_progress:
@@ -1272,6 +1274,9 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
         gods = [g for g in gods if g["name"] in delta_names]
         envy = [e for e in envy if e["method"] in delta_names]
         shotgun = [s for s in shotgun if s["name"] in delta_names]
+        # god_files: keep if any delta node lives in that file
+        delta_files = {node_to_file for n in delta_names if (node_to_file := next((nd.file for nd in graph.all_nodes() if nd.name == n and nd.file), None))}
+        god_files = [gf for gf in god_files if gf["file"] in delta_files]
 
     if fmt == "json":
         data: dict = {
@@ -1307,6 +1312,7 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
             "god_classes": gods,
             "feature_envy": envy,
             "shotgun_surgery": shotgun,
+            "god_files": god_files,
         }
         if not summary:
             fio_top = sorted(fio.items(), key=lambda x: x[1]["fan_in"] + x[1]["fan_out"], reverse=True)[:top_n]
@@ -1389,8 +1395,8 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
             console.print(f"  [dim]... and {len(layer_violations) - top_n} more[/]")
 
     # Code smells
-    if gods or envy or shotgun:
-        smell_count = len(gods) + len(envy) + len(shotgun)
+    if gods or envy or shotgun or god_files:
+        smell_count = len(gods) + len(envy) + len(shotgun) + len(god_files)
         console.print(f"\n[red bold]Code Smells[/] ({smell_count})")
         for gc in gods[:3]:
             console.print(f"  [red]God Class:[/] {gc['name']} [dim](WMC={gc['wmc']}, CBO={gc['cbo']}, LCOM4={gc['lcom4']})[/]")
@@ -1398,6 +1404,8 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
             console.print(f"  [red]Feature Envy:[/] {fe['method']} envies {fe['envied_class']} [dim]({fe['envied_refs']} refs vs {fe['own_refs']} own)[/]")
         for ss in shotgun[:3]:
             console.print(f"  [red]Shotgun Surgery:[/] {ss['name']} [dim](fan-out={ss['fan_out']})[/]")
+        for gf in god_files[:3]:
+            console.print(f"  [red]God File:[/] {gf['file']} [dim]({'; '.join(gf['reasons'])})[/]")
 
     if summary:
         # Summary mode: just hotspots + cycles + violations, done

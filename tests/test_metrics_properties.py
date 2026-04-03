@@ -16,6 +16,7 @@ from smg.graph_metrics import (
     detect_bridges,
     fan_in_out,
     find_cycles,
+    god_files,
     hits,
     kcore_decomposition,
     layering_violations,
@@ -593,6 +594,103 @@ class TestHITSProperties:
         # Each target should have equal authority
         auth_vals = {h[f"t{i}"]["authority"] for i in range(5)}
         assert len(auth_vals) == 1  # all equal
+
+
+class TestGodFileProperties:
+
+    @st.composite
+    @staticmethod
+    def _graph_with_files(draw, min_files=2, max_files=5, max_funcs_per_file=10):
+        """Generate a graph where nodes have file attributes."""
+        g = SemGraph()
+        n_files = draw(st.integers(min_value=min_files, max_value=max_files))
+        files = [f"src/mod{i}.py" for i in range(n_files)]
+        all_funcs: list[str] = []
+
+        for fi, fpath in enumerate(files):
+            mod_name = f"mod{fi}"
+            g.add_node(Node(name=mod_name, type=NodeType.MODULE, file=fpath))
+            n_funcs = draw(st.integers(min_value=1, max_value=max_funcs_per_file))
+            for fj in range(n_funcs):
+                fname = f"{mod_name}.f{fj}"
+                cc = draw(st.integers(min_value=1, max_value=20))
+                g.add_node(Node(
+                    name=fname, type=NodeType.FUNCTION, file=fpath,
+                    metadata={"metrics": {"cyclomatic_complexity": cc}},
+                ))
+                g.add_edge(Edge(source=mod_name, target=fname, rel=RelType.CONTAINS))
+                all_funcs.append(fname)
+
+        # Cross-file coupling
+        if len(all_funcs) >= 2:
+            n_edges = draw(st.integers(min_value=0, max_value=min(15, len(all_funcs))))
+            for _ in range(n_edges):
+                src = draw(st.sampled_from(all_funcs))
+                tgt = draw(st.sampled_from(all_funcs))
+                if src != tgt:
+                    key = (src, RelType.CALLS.value, tgt)
+                    if key not in g.edges:
+                        g.add_edge(Edge(source=src, target=tgt, rel=RelType.CALLS))
+
+        return g
+
+    @given(st.data())
+    @settings(max_examples=100)
+    def test_god_files_reference_real_files(self, data):
+        g = data.draw(TestGodFileProperties._graph_with_files())
+        results = god_files(g)
+        known_files = {n.file for n in g.all_nodes() if n.file}
+        for gf in results:
+            assert gf["file"] in known_files
+
+    @given(st.data())
+    @settings(max_examples=100)
+    def test_god_files_metrics_consistent(self, data):
+        """total_cc >= max_cc, and num_functions >= 0."""
+        g = data.draw(TestGodFileProperties._graph_with_files())
+        results = god_files(g)
+        for gf in results:
+            assert gf["total_cc"] >= gf["max_cc"]
+            assert gf["num_functions"] >= 0
+            assert gf["concerns"] >= 0
+
+    @given(st.data())
+    @settings(max_examples=100)
+    def test_god_files_have_reasons(self, data):
+        """Every flagged file must have at least one reason."""
+        g = data.draw(TestGodFileProperties._graph_with_files())
+        results = god_files(g)
+        for gf in results:
+            assert len(gf["reasons"]) >= 1
+
+    def test_simple_god_file(self):
+        """A file with 20 functions of CC=5 each should be flagged (total CC=100)."""
+        g = SemGraph()
+        g.add_node(Node(name="mod", type=NodeType.MODULE, file="big.py"))
+        for i in range(20):
+            g.add_node(Node(
+                name=f"mod.f{i}", type=NodeType.FUNCTION, file="big.py",
+                metadata={"metrics": {"cyclomatic_complexity": 5}},
+            ))
+            g.add_edge(Edge(source="mod", target=f"mod.f{i}", rel=RelType.CONTAINS))
+        results = god_files(g)
+        assert len(results) == 1
+        assert results[0]["file"] == "big.py"
+        assert results[0]["total_cc"] == 100
+        assert results[0]["num_functions"] == 20
+
+    def test_small_file_not_flagged(self):
+        """A file with 3 simple functions should not be flagged."""
+        g = SemGraph()
+        g.add_node(Node(name="mod", type=NodeType.MODULE, file="small.py"))
+        for i in range(3):
+            g.add_node(Node(
+                name=f"mod.f{i}", type=NodeType.FUNCTION, file="small.py",
+                metadata={"metrics": {"cyclomatic_complexity": 2}},
+            ))
+            g.add_edge(Edge(source="mod", target=f"mod.f{i}", rel=RelType.CONTAINS))
+        results = god_files(g)
+        assert len(results) == 0
 
 
 class TestMinimalCycleProperties:
