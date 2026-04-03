@@ -13,18 +13,53 @@ from smg.metrics import BranchMap, compute_metrics
 from smg.model import Edge, Node, NodeType, RelType
 
 _BUILTINS = frozenset({
-    "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf",
-    "malloc", "calloc", "realloc", "free",
+    # C standard library
+    "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf", "vprintf",
+    "vfprintf", "vsprintf", "vsnprintf",
+    "malloc", "calloc", "realloc", "free", "aligned_alloc",
     "memcpy", "memset", "memmove", "memcmp",
-    "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strcat",
-    "sizeof", "assert", "exit", "abort",
-    "fopen", "fclose", "fread", "fwrite", "fgets", "fputs",
-    # C++ stdlib
-    "std", "cout", "cerr", "endl",
-    "make_shared", "make_unique", "move", "forward",
+    "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strcat", "strncat",
+    "strstr", "strchr", "strrchr", "strtok", "strtol", "strtoul", "strtod",
+    "atoi", "atol", "atof",
+    "sizeof", "assert", "exit", "abort", "atexit",
+    "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "fseek", "ftell",
+    "fflush", "feof", "ferror", "rewind", "remove", "rename", "tmpfile",
+    "getchar", "putchar", "puts", "getline",
+    "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower",
+    "toupper", "tolower",
+    "abs", "labs", "div", "ldiv",
+    "qsort", "bsearch",
+    "time", "clock", "difftime", "mktime", "strftime",
+    "rand", "srand",
+    "setjmp", "longjmp",
+    "signal", "raise",
+    "perror", "strerror", "errno",
+    # C++ keywords / operators
     "static_cast", "dynamic_cast", "reinterpret_cast", "const_cast",
     "throw", "new", "delete",
+    # C++ stdlib commonly called as bare identifiers
+    "std", "cout", "cerr", "clog", "endl",
+    "make_shared", "make_unique", "move", "forward", "swap",
+    "begin", "end", "rbegin", "rend", "size", "empty",
+    "push_back", "pop_back", "push_front", "pop_front",
+    "emplace", "emplace_back", "insert", "erase", "clear", "find",
+    "sort", "stable_sort", "lower_bound", "upper_bound",
+    "min", "max", "clamp", "accumulate",
+    "to_string", "stoi", "stol", "stoul", "stof", "stod",
+    "get", "ref", "cref",
+    # LLVM/compiler infrastructure common helpers
+    "llvm_unreachable", "report_fatal_error",
+    "isa", "cast", "dyn_cast", "dyn_cast_or_null", "cast_or_null",
+    "dbgs", "errs", "outs",
 })
+
+# Prefixes for identifiers that are almost certainly unresolvable
+# (framework macros, compiler intrinsics, etc.)
+_SKIP_PREFIXES = (
+    "__builtin_", "__atomic_", "__sync_", "_mm", "__",
+    "llvm_", "LLVM_",
+    "NS_", "CF_", "CG_",  # Apple frameworks
+)
 
 C_BRANCH_MAP = BranchMap(
     branch_nodes=frozenset({
@@ -64,32 +99,36 @@ class _CExtractorBase:
         edges: list[Edge],
         is_cpp: bool,
     ) -> None:
-        for child in root.children:
-            # Descend into preprocessor conditionals and linkage specs transparently
-            if child.type in ("preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif", "linkage_specification"):
-                self._walk_top_level(child, parent_name, file_path, nodes, edges, is_cpp)
-                continue
-            if child.type == "declaration_list":
-                self._walk_top_level(child, parent_name, file_path, nodes, edges, is_cpp)
-                continue
-            if child.type == "function_definition":
-                self._extract_function(child, parent_name, None, file_path, nodes, edges)
-            elif child.type == "type_definition":
-                self._extract_typedef(child, parent_name, file_path, nodes, edges)
-            elif child.type == "preproc_def":
-                self._extract_define(child, parent_name, file_path, nodes, edges)
-            elif child.type == "declaration":
-                # Could be a global variable or function declaration
-                pass
-            elif is_cpp and child.type == "namespace_definition":
-                self._extract_namespace(child, parent_name, file_path, nodes, edges)
-            elif is_cpp and child.type in ("class_specifier", "struct_specifier"):
-                self._extract_cpp_class(child, parent_name, file_path, nodes, edges)
-            # Handle top-level class/struct that ends with semicolon (template specilization etc)
-            if is_cpp and child.type == "declaration":
-                for inner in child.children:
-                    if inner.type in ("class_specifier", "struct_specifier"):
-                        self._extract_cpp_class(inner, parent_name, file_path, nodes, edges)
+        _TRANSPARENT = frozenset({
+            "preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif",
+            "linkage_specification", "declaration_list",
+        })
+        # Stack entries: (container_node, parent_name)
+        stack: list[tuple[TSNode, str]] = [(root, parent_name)]
+        while stack:
+            container, pname = stack.pop()
+            for child in container.children:
+                ctype = child.type
+                # Descend transparently into preprocessor conditionals / linkage specs
+                if ctype in _TRANSPARENT:
+                    stack.append((child, pname))
+                    continue
+                if ctype == "function_definition":
+                    self._extract_function(child, pname, None, file_path, nodes, edges)
+                elif ctype == "type_definition":
+                    self._extract_typedef(child, pname, file_path, nodes, edges)
+                elif ctype == "preproc_def":
+                    self._extract_define(child, pname, file_path, nodes, edges)
+                elif ctype == "declaration":
+                    # Handle top-level class/struct in declarations (template specialization etc)
+                    if is_cpp:
+                        for inner in child.children:
+                            if inner.type in ("class_specifier", "struct_specifier"):
+                                self._extract_cpp_class(inner, pname, file_path, nodes, edges)
+                elif is_cpp and ctype == "namespace_definition":
+                    self._extract_namespace(child, pname, file_path, nodes, edges)
+                elif is_cpp and ctype in ("class_specifier", "struct_specifier"):
+                    self._extract_cpp_class(child, pname, file_path, nodes, edges)
 
     def _extract_namespace(
         self,
@@ -265,23 +304,25 @@ class _CExtractorBase:
 
     def _extract_calls(
         self,
-        node: TSNode,
+        root: TSNode,
         caller_name: str,
         class_name: str | None,
         edges: list[Edge],
     ) -> None:
-        if node.type == "call_expression":
-            target = self._call_target(node, class_name)
-            if target is not None:
-                name, resolved = target
-                edges.append(Edge(
-                    source=caller_name, target=name, rel=RelType.CALLS,
-                    metadata={} if resolved else {"unresolved": True},
-                ))
-        for child in node.children:
-            if child.type == "function_definition":
-                continue
-            self._extract_calls(child, caller_name, class_name, edges)
+        stack: list[TSNode] = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "call_expression":
+                target = self._call_target(node, class_name)
+                if target is not None:
+                    name, resolved = target
+                    edges.append(Edge(
+                        source=caller_name, target=name, rel=RelType.CALLS,
+                        metadata={} if resolved else {"unresolved": True},
+                    ))
+            for child in node.children:
+                if child.type != "function_definition":
+                    stack.append(child)
 
     def _call_target(self, call_node: TSNode, class_name: str | None) -> tuple[str, bool] | None:
         func = call_node.children[0] if call_node.children else None
@@ -292,18 +333,30 @@ class _CExtractorBase:
             name = func.text.decode()
             if name in _BUILTINS:
                 return None
+            # Skip macro-like calls (ALL_CAPS identifiers)
+            if name.isupper() and len(name) > 1:
+                return None
+            # Skip compiler intrinsics and framework macros
+            if name.startswith(_SKIP_PREFIXES):
+                return None
             return (name, False)
 
         if func.type == "field_expression":
-            obj = _find_child(func, "field_identifier")
-            # For C++: this->method() or obj.method() or obj->method()
-            if obj is not None:
-                return (obj.text.decode(), False)
+            # obj->method() / obj.method(): only emit if we know the class
+            if class_name is not None:
+                obj = _find_child(func, "field_identifier")
+                if obj is not None:
+                    return (obj.text.decode(), False)
+            # Unknown receiver — skip, these almost never resolve via suffix match
+            return None
 
         if func.type == "template_function":
             name = _find_child(func, "identifier")
             if name is not None:
-                return (name.text.decode(), False)
+                n = name.text.decode()
+                if n in _BUILTINS or (n.isupper() and len(n) > 1):
+                    return None
+                return (n, False)
 
         return None
 

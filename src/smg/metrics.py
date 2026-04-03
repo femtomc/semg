@@ -77,53 +77,52 @@ def compute_metrics(func_node: TSNode, branch_map: BranchMap) -> NodeMetrics:
 
 
 def _walk_for_metrics(
-    node: TSNode,
+    root: TSNode,
     bm: BranchMap,
     nesting: int,
 ) -> tuple[int, int, int, int]:
-    """Recursively walk AST, returning (cc_increments, cognitive, max_depth, return_count)."""
+    """Iteratively walk AST, returning (cc_increments, cognitive, max_depth, return_count)."""
     cc = 0
     cog = 0
     max_depth = nesting
     returns = 0
 
-    for child in node.children:
-        # Don't descend into nested function/class definitions
-        if child.type in bm.function_nodes or child.type in ("class_definition", "class_declaration"):
-            continue
+    _skip = bm.function_nodes | frozenset({"class_definition", "class_declaration"})
+    stack: list[tuple[TSNode, int]] = [(root, nesting)]
 
-        # Branch node: contributes to both CC and cognitive complexity
-        if child.type in bm.branch_nodes:
-            cc += 1
-            cog += 1 + nesting  # cognitive: +1 base, +nesting penalty
+    while stack:
+        node, nest = stack.pop()
+        for child in node.children:
+            ctype = child.type
+            # Don't descend into nested function/class definitions
+            if ctype in _skip:
+                continue
 
-        # Boolean operators
-        if child.type in bm.boolean_operators:
-            if bm.logical_operator_tokens:
-                # Need to check the actual operator token (JS/TS binary_expression)
-                if _has_logical_operator(child, bm.logical_operator_tokens):
+            # Branch node: contributes to both CC and cognitive complexity
+            if ctype in bm.branch_nodes:
+                cc += 1
+                cog += 1 + nest  # cognitive: +1 base, +nesting penalty
+
+            # Boolean operators
+            if ctype in bm.boolean_operators:
+                if bm.logical_operator_tokens:
+                    if _has_logical_operator(child, bm.logical_operator_tokens):
+                        cc += 1
+                        cog += 1
+                else:
                     cc += 1
                     cog += 1
-            else:
-                # Direct match (Python boolean_operator)
-                cc += 1
-                cog += 1
 
-        # Return statements
-        if child.type in ("return_statement",):
-            returns += 1
+            # Return statements
+            if ctype == "return_statement":
+                returns += 1
 
-        # Track nesting depth
-        child_nesting = nesting
-        if child.type in bm.nesting_nodes:
-            child_nesting = nesting + 1
+            # Track nesting depth
+            child_nesting = nest + 1 if ctype in bm.nesting_nodes else nest
+            if child_nesting > max_depth:
+                max_depth = child_nesting
 
-        # Recurse
-        sub_cc, sub_cog, sub_depth, sub_returns = _walk_for_metrics(child, bm, child_nesting)
-        cc += sub_cc
-        cog += sub_cog
-        max_depth = max(max_depth, sub_depth)
-        returns += sub_returns
+            stack.append((child, child_nesting))
 
     return cc, cog, max_depth, returns
 

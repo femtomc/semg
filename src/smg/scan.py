@@ -215,10 +215,12 @@ def scan_paths(
             stats.nodes_removed += 1
             graph.remove_node(name)
 
-    # Extract phase: collect all nodes and edges
-    all_nodes: list[Node] = []
-    all_edges: list[Edge] = []
+    # Streaming extract phase: insert nodes immediately, defer unresolved edges
+    deferred_edges: list[Edge] = []
     module_names: set[str] = set()
+    scanned_nodes: list[str] = []  # track names for fan-in/fan-out post-pass
+
+    graph_nodes = graph.nodes  # local ref for faster lookups
 
     for file_idx, fpath in enumerate(files):
         ext = fpath.suffix
@@ -239,39 +241,52 @@ def scan_paths(
 
         # Create the module node (__init__.py / index.ts / index.js -> PACKAGE, else MODULE)
         is_init = fpath.stem in ("__init__", "index")
-        all_nodes.append(Node(
+        mod_node = Node(
             name=module_name,
             type=NodeType.PACKAGE if is_init else NodeType.MODULE,
             file=rel_path,
-        ))
+            metadata={"source": "scan"},
+        )
+        graph.add_node(mod_node)
+        stats.nodes_added += 1
+        stats.type_counts[mod_node.type.value] = stats.type_counts.get(mod_node.type.value, 0) + 1
 
         result = extractor.extract(source, rel_path, module_name)
-        all_nodes.extend(result.nodes)
-        all_edges.extend(result.edges)
+
+        # Insert nodes immediately
+        for node in result.nodes:
+            node.metadata["source"] = "scan"
+            graph.add_node(node)
+            stats.nodes_added += 1
+            stats.type_counts[node.type.value] = stats.type_counts.get(node.type.value, 0) + 1
+            if node.type.value in ("function", "method"):
+                scanned_nodes.append(node.name)
+
+        # Partition edges: resolved go in now, unresolved deferred
+        for edge in result.edges:
+            if edge.metadata.get("unresolved"):
+                deferred_edges.append(edge)
+            else:
+                edge.metadata["source"] = "scan"
+                if edge.source in graph_nodes and edge.target in graph_nodes:
+                    if edge.key not in graph.edges:
+                        graph.add_edge(edge)
+                        stats.edges_added += 1
+                else:
+                    stats.skipped_edges += 1
 
         stats.files += 1
         lang = type(extractor).__name__.replace("Extractor", "")
         stats.lang_counts[lang] = stats.lang_counts.get(lang, 0) + 1
 
-    # Add package hierarchy (only for packages not already in all_nodes)
-    known_names = {n.name for n in all_nodes}
+    # Add package hierarchy
     for mod_name in module_names:
         parts = mod_name.split(".")
         for i in range(len(parts) - 1):
             pkg_name = ".".join(parts[: i + 1])
-            if pkg_name not in known_names and graph.get_node(pkg_name) is None:
-                all_nodes.append(Node(name=pkg_name, type=NodeType.PACKAGE))
-                known_names.add(pkg_name)
-
-    # Stamp provenance on all scan-produced nodes
-    for node in all_nodes:
-        node.metadata["source"] = "scan"
-
-    # Populate nodes (upsert)
-    for node in all_nodes:
-        graph.add_node(node)
-        stats.nodes_added += 1
-        stats.type_counts[node.type.value] = stats.type_counts.get(node.type.value, 0) + 1
+            if graph.get_node(pkg_name) is None:
+                pkg_node = Node(name=pkg_name, type=NodeType.PACKAGE, metadata={"source": "scan"})
+                graph.add_node(pkg_node)
 
     # Add package CONTAINS edges
     for mod_name in module_names:
@@ -288,39 +303,34 @@ def scan_paths(
                     ))
                     stats.edges_added += 1
 
-    # Resolve and add edges (stamp provenance)
-    for edge in all_edges:
-        is_unresolved = edge.metadata.get("unresolved", False)
+    # Resolve deferred (unresolved) edges — all nodes are now in the graph
+    for edge in deferred_edges:
+        resolved_target = _resolve_edge_target(graph, edge.target)
+        if resolved_target is None:
+            stats.skipped_edges += 1
+            continue
+        resolved_edge = Edge(
+            source=edge.source,
+            target=resolved_target,
+            rel=edge.rel,
+            metadata={k: v for k, v in edge.metadata.items() if k != "unresolved"},
+        )
+        resolved_edge.metadata["source"] = "scan"
 
-        if is_unresolved:
-            resolved_target = _resolve_edge_target(graph, edge.target)
-            if resolved_target is None:
-                stats.skipped_edges += 1
-                continue
-            edge = Edge(
-                source=edge.source,
-                target=resolved_target,
-                rel=edge.rel,
-                metadata={k: v for k, v in edge.metadata.items() if k != "unresolved"},
-            )
-
-        # Stamp provenance
-        edge.metadata["source"] = "scan"
-
-        # Verify both endpoints exist
-        if edge.source not in graph.nodes or edge.target not in graph.nodes:
+        if resolved_edge.source not in graph_nodes or resolved_edge.target not in graph_nodes:
             stats.skipped_edges += 1
             continue
 
-        if edge.key not in graph.edges:
-            graph.add_edge(edge)
+        if resolved_edge.key not in graph.edges:
+            graph.add_edge(resolved_edge)
             stats.edges_added += 1
 
-    # Post-pass: compute fan-in/fan-out for functions and methods
-    for node in graph.iter_nodes():
-        if node.type.value in ("function", "method"):
-            fan_in = graph.incoming_count(node.name, rel=RelType.CALLS)
-            fan_out = graph.outgoing_count(node.name, rel=RelType.CALLS)
+    # Post-pass: compute fan-in/fan-out only for scanned functions/methods
+    for name in scanned_nodes:
+        node = graph.get_node(name)
+        if node is not None:
+            fan_in = graph.incoming_count(name, rel=RelType.CALLS)
+            fan_out = graph.outgoing_count(name, rel=RelType.CALLS)
             node.metadata.setdefault("metrics", {}).update({
                 "fan_in": fan_in,
                 "fan_out": fan_out,

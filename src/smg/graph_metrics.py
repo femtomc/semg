@@ -6,6 +6,7 @@ containment edges are excluded since they encode hierarchy, not coupling.
 """
 from __future__ import annotations
 
+import random
 from collections import defaultdict, deque
 
 from smg.graph import SemGraph
@@ -262,10 +263,18 @@ def pagerank(
 # --- Betweenness centrality (Brandes) ---
 
 
-def betweenness_centrality(graph: SemGraph) -> dict[str, float]:
+def betweenness_centrality(
+    graph: SemGraph,
+    *,
+    sample_threshold: int = 5_000,
+    sample_size: int = 500,
+) -> dict[str, float]:
     """Compute betweenness centrality on undirected coupling edges.
 
-    Uses Brandes' algorithm. Returns normalized values in [0, 1].
+    Uses Brandes' algorithm. For graphs larger than *sample_threshold*
+    nodes, runs BFS from a random sample of *sample_size* source nodes
+    instead of all nodes (approximate betweenness). Returns normalized
+    values in [0, 1].
     """
     adj, nodes = _undirected_coupling_adj(graph)
     n = len(nodes)
@@ -275,13 +284,20 @@ def betweenness_centrality(graph: SemGraph) -> dict[str, float]:
     node_list = tuple(sorted(nodes))
     bc: dict[str, float] = {node: 0.0 for node in node_list}
 
-    for s in node_list:
+    # For large graphs, sample source nodes instead of iterating all
+    if n > sample_threshold:
+        sources = random.sample(node_list, min(sample_size, n))
+        scale = n / len(sources)  # scale up to approximate full result
+    else:
+        sources = node_list
+        scale = 1.0
+
+    for s in sources:
         # BFS from s
         stack: list[str] = []
         predecessors: dict[str, list[str]] = defaultdict(list)
         sigma: dict[str, int] = {s: 1}
         dist: dict[str, int] = {s: 0}
-        sigma[s] = 1
         queue: deque[str] = deque([s])
         adj_get = adj.get
 
@@ -312,8 +328,9 @@ def betweenness_centrality(graph: SemGraph) -> dict[str, float]:
     # Normalize
     norm = (n - 1) * (n - 2)
     if norm > 0:
+        inv = scale / norm
         for node in bc:
-            bc[node] /= norm
+            bc[node] *= inv
 
     return bc
 

@@ -219,25 +219,27 @@ class ZigExtractor:
 
     def _extract_calls(
         self,
-        node: TSNode,
+        root: TSNode,
         caller_name: str,
         struct_name: str | None,
         edges: list[Edge],
     ) -> None:
-        if node.type == "call_expression":
-            target = self._call_target(node, struct_name)
-            if target is not None:
-                name, resolved = target
-                edges.append(Edge(
-                    source=caller_name,
-                    target=name,
-                    rel=RelType.CALLS,
-                    metadata={} if resolved else {"unresolved": True},
-                ))
-        for child in node.children:
-            if child.type == "function_declaration":
-                continue
-            self._extract_calls(child, caller_name, struct_name, edges)
+        stack: list[TSNode] = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "call_expression":
+                target = self._call_target(node, struct_name)
+                if target is not None:
+                    name, resolved = target
+                    edges.append(Edge(
+                        source=caller_name,
+                        target=name,
+                        rel=RelType.CALLS,
+                        metadata={} if resolved else {"unresolved": True},
+                    ))
+            for child in node.children:
+                if child.type != "function_declaration":
+                    stack.append(child)
 
     def _call_target(self, call_node: TSNode, struct_name: str | None) -> tuple[str, bool] | None:
         """Resolve call target from a call_expression node."""

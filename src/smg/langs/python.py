@@ -180,30 +180,32 @@ class PythonExtractor:
 
     def _extract_calls(
         self,
-        node: TSNode,
+        root: TSNode,
         caller_name: str,
         class_name: str | None,
         out_edges: list[Edge],
     ) -> None:
-        """Recursively walk AST and extract call edges."""
-        if node.type == "call":
-            func_node = node.child_by_field_name("function")
-            if func_node is not None:
-                result = self._call_target(func_node, class_name)
-                if result is not None:
-                    target, resolved = result
-                    metadata = {} if resolved else {"unresolved": True}
-                    out_edges.append(Edge(
-                        source=caller_name,
-                        target=target,
-                        rel=RelType.CALLS,
-                        metadata=metadata,
-                    ))
-        # Recurse into children (but not into nested function/class definitions)
-        for child in node.children:
-            if child.type in ("function_definition", "class_definition", "decorated_definition"):
-                continue
-            self._extract_calls(child, caller_name, class_name, out_edges)
+        """Iteratively walk AST and extract call edges."""
+        _skip = frozenset({"function_definition", "class_definition", "decorated_definition"})
+        stack: list[TSNode] = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "call":
+                func_node = node.child_by_field_name("function")
+                if func_node is not None:
+                    result = self._call_target(func_node, class_name)
+                    if result is not None:
+                        target, resolved = result
+                        metadata = {} if resolved else {"unresolved": True}
+                        out_edges.append(Edge(
+                            source=caller_name,
+                            target=target,
+                            rel=RelType.CALLS,
+                            metadata=metadata,
+                        ))
+            for child in node.children:
+                if child.type not in _skip:
+                    stack.append(child)
 
     def _call_target(self, func_node: TSNode, class_name: str | None) -> tuple[str, bool] | None:
         """Resolve a call's function node to (target_name, is_resolved).
