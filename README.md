@@ -1,6 +1,6 @@
 # smg
 
-Architectural analysis engine for codebases. Parses source into a semantic graph of modules, classes, functions, and their relationships, then runs graph-theoretic and OO metrics to surface hotspots, track structural change across commits, and enforce design constraints. Built for agents and humans.
+Parses source code into a semantic graph of modules, classes, functions, and their relationships, then runs graph-theoretic and OO metrics to surface hotspots, track structural change across commits, and enforce design constraints.
 
 ## Install
 
