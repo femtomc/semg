@@ -11,7 +11,7 @@ from tree_sitter import Language, Node as TSNode, Parser
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
-from smg.metrics import JS_BRANCH_MAP, compute_metrics
+from smg.metrics import JS_BRANCH_MAP, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
 # Common JS/TS builtins to skip
@@ -147,7 +147,7 @@ class _JSExtractorBase:
         method_name = name_node.text.decode()
         qualified = f"{class_name}.{method_name}"
 
-        metrics = compute_metrics(node, JS_BRANCH_MAP)
+        meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
 
         out_nodes.append(Node(
             name=qualified,
@@ -157,9 +157,9 @@ class _JSExtractorBase:
             end_line=node.end_point[0] + 1,
             docstring=self._get_jsdoc(node),
             metadata={
-                "metrics": metrics.to_dict(),
+                "metrics": meta.metrics.to_dict(),
                 "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
+                "structure_hash": meta.structure_hash,
             },
         ))
         out_edges.append(Edge(source=class_name, target=qualified, rel=RelType.CONTAINS))
@@ -184,7 +184,7 @@ class _JSExtractorBase:
         func_name = name_node.text.decode()
         qualified = f"{parent_name}.{func_name}"
 
-        metrics = compute_metrics(node, JS_BRANCH_MAP)
+        meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
 
         out_nodes.append(Node(
             name=qualified,
@@ -194,9 +194,9 @@ class _JSExtractorBase:
             end_line=node.end_point[0] + 1,
             docstring=self._get_jsdoc(node),
             metadata={
-                "metrics": metrics.to_dict(),
+                "metrics": meta.metrics.to_dict(),
                 "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
+                "structure_hash": meta.structure_hash,
             },
         ))
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))

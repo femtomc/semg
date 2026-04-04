@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import xxhash
 from tree_sitter import Node as TSNode
 
 
@@ -52,8 +53,16 @@ class NodeMetrics:
         return asdict(self)
 
 
+@dataclass
+class ExtractionMeta:
+    """Combined result of the fused metrics + structure hash walk."""
+
+    metrics: NodeMetrics
+    structure_hash: str
+
+
 def compute_metrics(func_node: TSNode, branch_map: BranchMap) -> NodeMetrics:
-    """Compute metrics for a function/method node."""
+    """Compute metrics for a function/method node (metrics only, no hash)."""
     metrics = NodeMetrics()
 
     # Lines of code
@@ -74,6 +83,164 @@ def compute_metrics(func_node: TSNode, branch_map: BranchMap) -> NodeMetrics:
         metrics.return_count = returns
 
     return metrics
+
+
+def compute_metrics_and_hash(func_node: TSNode, branch_map: BranchMap) -> ExtractionMeta:
+    """Compute metrics AND structure hash in a single AST walk.
+
+    Fuses what were previously two separate DFS traversals (compute_metrics
+    + structure_hash) into one pass over the AST. This halves the number of
+    Python-C boundary crossings for tree-sitter node access.
+    """
+    metrics = NodeMetrics()
+    metrics.lines_of_code = func_node.end_point[0] - func_node.start_point[0] + 1
+
+    # Parameter count (small walk, not worth fusing)
+    params = func_node.child_by_field_name("parameters") or func_node.child_by_field_name("formal_parameters")
+    if params is not None:
+        metrics.parameter_count = sum(1 for c in params.children if c.is_named and c.type not in ("comment",))
+
+    # Fused walk: metrics (on body) + structure hash (on full node)
+    h = xxhash.xxh64()
+
+    # Hash the function node itself and its preamble (before body)
+    body = func_node.child_by_field_name("body")
+
+    # Structure hash walk over the full node, metrics walk over the body
+    cc, cog, max_depth, returns = _walk_fused(func_node, body, branch_map, h)
+    metrics.cyclomatic_complexity = 1 + cc
+    metrics.cognitive_complexity = cog
+    metrics.max_nesting_depth = max_depth
+    metrics.return_count = returns
+
+    return ExtractionMeta(metrics=metrics, structure_hash=h.hexdigest())
+
+
+# Sets shared with hashing.py — keep in sync
+_HASH_SKIP = frozenset({
+    "comment", "line_comment", "block_comment",
+})
+
+_HASH_NORMALIZE = frozenset({
+    "identifier", "type_identifier", "field_identifier",
+    "string", "string_content", "string_literal",
+    "integer", "integer_literal", "float", "float_literal",
+    "number", "true", "false", "none", "null",
+})
+
+
+def _walk_fused(
+    root: TSNode,
+    body: TSNode | None,
+    bm: BranchMap,
+    h: xxhash.xxh64,
+) -> tuple[int, int, int, int]:
+    """Single DFS walk that computes both structure hash and metrics.
+
+    The structure hash covers the entire `root` subtree.
+    The metrics (CC, cognitive, nesting, returns) cover only the `body` subtree
+    (skipping nested function/class definitions, matching compute_metrics behavior).
+
+    Returns (cc_increments, cognitive, max_depth, return_count).
+    """
+    cc = 0
+    cog = 0
+    max_depth = 0
+    returns = 0
+
+    _metrics_skip = bm.function_nodes | frozenset({"class_definition", "class_declaration"})
+    # Identify body node by byte range (not Python object id, since tree-sitter
+    # creates new wrapper objects for the same underlying node)
+    body_range = (body.start_byte, body.end_byte) if body is not None else (-1, -1)
+
+    # Stack entries: (node, nesting_depth, in_body, is_end_marker)
+    stack: list = [(root, 0, False, False)]
+
+    while stack:
+        entry = stack.pop()
+
+        if entry[3]:
+            # End-of-children marker for structure hash
+            h.update(b")")
+            continue
+
+        node, nest, in_body, _ = entry
+        ctype = node.type
+
+        # Structure hash logic
+        if ctype in _HASH_SKIP:
+            continue
+        if ctype in _HASH_NORMALIZE:
+            h.update(b"_")
+            continue
+
+        h.update(ctype.encode())
+        h.update(b"(")
+
+        # Check if we're entering the body
+        child_in_body = in_body or (node.start_byte, node.end_byte) == body_range
+
+        # Metrics logic (only within body, skip nested functions/classes)
+        if child_in_body and in_body:
+            if ctype in bm.branch_nodes:
+                cc += 1
+                cog += 1 + nest
+            if ctype in bm.boolean_operators:
+                if bm.logical_operator_tokens:
+                    if _has_logical_operator(node, bm.logical_operator_tokens):
+                        cc += 1
+                        cog += 1
+                else:
+                    cc += 1
+                    cog += 1
+            if ctype == "return_statement":
+                returns += 1
+
+        # Nesting depth for metrics
+        child_nest = nest
+        if child_in_body and ctype in bm.nesting_nodes:
+            child_nest = nest + 1
+            if child_nest > max_depth:
+                max_depth = child_nest
+
+        # Push end-of-children marker for hash, then children in reverse
+        stack.append((None, 0, False, True))
+
+        children = node.children
+        for i in range(len(children) - 1, -1, -1):
+            child = children[i]
+            child_type = child.type
+            if child_type in _HASH_SKIP:
+                continue
+            # For metrics: skip nested functions/classes within body
+            skip_metrics = child_in_body and child_type in _metrics_skip
+            stack.append((child, child_nest, child_in_body and not skip_metrics, False))
+
+    return cc, cog, max_depth, returns
+
+
+def compute_structure_hash(node: TSNode) -> str:
+    """Compute structure hash only (no metrics). For classes and non-function entities."""
+    h = xxhash.xxh64()
+    stack: list[TSNode | None] = [node]
+    while stack:
+        n = stack.pop()
+        if n is None:
+            h.update(b")")
+            continue
+        if n.type in _HASH_SKIP:
+            continue
+        if n.type in _HASH_NORMALIZE:
+            h.update(b"_")
+            continue
+        h.update(n.type.encode())
+        h.update(b"(")
+        stack.append(None)
+        for i in range(n.child_count - 1, -1, -1):
+            child = n.children[i]
+            if child.type not in _HASH_SKIP:
+                stack.append(child)
+    return h.hexdigest()
 
 
 def _walk_for_metrics(

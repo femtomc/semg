@@ -10,7 +10,7 @@ from tree_sitter import Language, Node as TSNode, Parser
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
-from smg.metrics import BranchMap, compute_metrics
+from smg.metrics import BranchMap, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
 _BUILTINS = frozenset({
@@ -261,7 +261,7 @@ class _CExtractorBase:
         qualified = f"{parent_name}.{func_name}"
 
         is_method = class_name is not None
-        metrics = compute_metrics(node, C_BRANCH_MAP)
+        meta = compute_metrics_and_hash(node, C_BRANCH_MAP)
 
         nodes.append(Node(
             name=qualified,
@@ -270,9 +270,9 @@ class _CExtractorBase:
             line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
             metadata={
-                "metrics": metrics.to_dict(),
+                "metrics": meta.metrics.to_dict(),
                 "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
+                "structure_hash": meta.structure_hash,
             },
         ))
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))

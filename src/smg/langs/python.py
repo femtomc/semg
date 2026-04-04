@@ -5,7 +5,7 @@ from tree_sitter import Language, Node as TSNode, Parser
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
-from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics
+from smg.metrics import PYTHON_BRANCH_MAP, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
 _LANGUAGE = Language(tspython.language())
@@ -30,7 +30,23 @@ class PythonExtractor:
     extensions = [".py"]
     branch_map = PYTHON_BRANCH_MAP
 
+    # Set to True to use the native Zig extractor (prototype — faster but
+    # not yet feature-complete; missing: docstrings, relative imports,
+    # attribute chain calls). Enable for benchmarking or when these features
+    # aren't needed.
+    use_native: bool = False
+
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:
+        if self.use_native:
+            try:
+                from smg._accel import extract_python_native
+                result = extract_python_native(source, file_path, module_name)
+                if result is not None:
+                    return _convert_native_result(result)
+            except Exception:
+                pass
+
+        # Python extraction (full-featured)
         tree = _PARSER.parse(source)
         nodes: list[Node] = []
         edges: list[Edge] = []
@@ -154,8 +170,8 @@ class PythonExtractor:
         params = node.child_by_field_name("parameters")
         is_method = self._has_self_or_cls(params)
 
-        # Compute AST metrics
-        metrics = compute_metrics(node, self.branch_map)
+        # Fused metrics + structure hash in a single AST walk
+        meta = compute_metrics_and_hash(node, self.branch_map)
 
         out_nodes.append(Node(
             name=qualified,
@@ -165,9 +181,9 @@ class PythonExtractor:
             end_line=node.end_point[0] + 1,
             docstring=self._get_docstring(node),
             metadata={
-                "metrics": metrics.to_dict(),
+                "metrics": meta.metrics.to_dict(),
                 "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
+                "structure_hash": meta.structure_hash,
             },
         ))
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
@@ -411,6 +427,51 @@ class PythonExtractor:
                 if func is not None:
                     return func.text.decode()
         return None
+
+
+def _convert_native_result(data: tuple[list, list]) -> ExtractResult:
+    """Convert native JSONL extraction output to ExtractResult."""
+    raw_nodes, raw_edges = data
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+
+    for r in raw_nodes:
+        metadata: dict = {}
+        if "cc" in r:
+            metadata["metrics"] = {
+                "cyclomatic_complexity": r["cc"],
+                "cognitive_complexity": r.get("cog", 0),
+                "max_nesting_depth": r.get("mnd", 0),
+                "lines_of_code": r.get("loc", 0),
+                "parameter_count": r.get("pc", 0),
+                "return_count": r.get("rc", 0),
+            }
+        if "ch" in r:
+            metadata["content_hash"] = r["ch"]
+        if "sh" in r:
+            metadata["structure_hash"] = r["sh"]
+
+        nodes.append(Node(
+            name=r["name"],
+            type=NodeType(r["type"]),
+            file=r.get("file"),
+            line=r.get("line"),
+            end_line=r.get("end_line"),
+            metadata=metadata,
+        ))
+
+    for r in raw_edges:
+        metadata = {}
+        if r.get("unresolved"):
+            metadata["unresolved"] = True
+        edges.append(Edge(
+            source=r["src"],
+            target=r["tgt"],
+            rel=RelType(r["rel"]),
+            metadata=metadata,
+        ))
+
+    return ExtractResult(nodes=nodes, edges=edges)
 
 
 # Register on import
