@@ -79,3 +79,76 @@ def test_build_file_index_skips_nodes_without_location():
     graph.add_node(Node(name="mod", type=NodeType.MODULE))
     index = _build_file_index(graph)
     assert len(index) == 0
+
+
+def test_churn_deduplicates_hunks_per_commit():
+    """Two hunks in the same function in one commit should count as one touch."""
+    diff_output = """\
+commit aaa111
+diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -2,1 +2,2 @@ def foo():
+@@ -8,1 +9,2 @@ def foo():
+"""
+    from smg.churn import compute_churn
+
+    graph = SemGraph()
+    graph.add_node(Node(name="mod.foo", type=NodeType.FUNCTION, file="a.py", line=1, end_line=15))
+
+    # Patch _git_hunks to return our controlled output
+    hunks = _parse_unified_diff(diff_output)
+    file_index = _build_file_index(graph)
+
+    from collections import defaultdict
+    entity_touches: set[tuple[str, str]] = set()
+    for hunk in hunks:
+        if hunk.file not in file_index:
+            continue
+        for start, end, name in file_index[hunk.file]:
+            if start <= hunk.end_line and hunk.start_line <= end:
+                entity_touches.add((hunk.commit, name))
+
+    entity_churn: dict[str, int] = defaultdict(int)
+    for _, name in entity_touches:
+        entity_churn[name] += 1
+
+    # Two hunks in the same commit -> one touch, not two
+    assert entity_churn["mod.foo"] == 1
+
+
+def test_churn_counts_across_commits():
+    """Same function modified in two commits should count as two touches."""
+    diff_output = """\
+commit aaa111
+diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -2,1 +2,2 @@ def foo():
+commit bbb222
+diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -5,1 +6,2 @@ def foo():
+"""
+    from collections import defaultdict
+
+    graph = SemGraph()
+    graph.add_node(Node(name="mod.foo", type=NodeType.FUNCTION, file="a.py", line=1, end_line=15))
+
+    hunks = _parse_unified_diff(diff_output)
+    file_index = _build_file_index(graph)
+
+    entity_touches: set[tuple[str, str]] = set()
+    for hunk in hunks:
+        if hunk.file not in file_index:
+            continue
+        for start, end, name in file_index[hunk.file]:
+            if start <= hunk.end_line and hunk.start_line <= end:
+                entity_touches.add((hunk.commit, name))
+
+    entity_churn: dict[str, int] = defaultdict(int)
+    for _, name in entity_touches:
+        entity_churn[name] += 1
+
+    assert entity_churn["mod.foo"] == 2

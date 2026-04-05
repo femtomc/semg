@@ -220,6 +220,14 @@ def _diff_node(old: Node, new: Node) -> list[NodeChange]:
         changes.append(NodeChange(old.name, "line", str(old.line), str(new.line)))
     if old.docstring != new.docstring:
         changes.append(NodeChange(old.name, "docstring", old.docstring, new.docstring))
+    old_ch = old.metadata.get("content_hash")
+    new_ch = new.metadata.get("content_hash")
+    if old_ch != new_ch:
+        changes.append(NodeChange(old.name, "content_hash", old_ch, new_ch))
+    old_sh = old.metadata.get("structure_hash")
+    new_sh = new.metadata.get("structure_hash")
+    if old_sh != new_sh:
+        changes.append(NodeChange(old.name, "structure_hash", old_sh, new_sh))
     return changes
 
 

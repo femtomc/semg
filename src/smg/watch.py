@@ -50,7 +50,10 @@ class _ScanHandler(FileSystemEventHandler):
             self._schedule(Path(event.src_path))
 
     def on_deleted(self, event: FileSystemEvent) -> None:
-        pass
+        if event.is_directory:
+            return
+        if self._is_supported(event.src_path):
+            self._schedule(Path(event.src_path))
 
     def _schedule(self, path: Path) -> None:
         with self._lock:

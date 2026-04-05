@@ -109,9 +109,17 @@ def parse_deny_pattern(pattern: str) -> tuple[str, str | None, str]:
     raise ValueError(f"invalid deny pattern: {pattern!r}")
 
 
-def check_deny(rule: Rule, graph: SemGraph) -> Violation | None:
+def check_deny(
+    rule: Rule, graph: SemGraph, scope: str | None = None,
+) -> Violation | None:
     """Check a path denial rule against the graph."""
     source_glob, rel, target_glob = parse_deny_pattern(rule.pattern)
+
+    # When scoped, only consider edges whose source is within the scope.
+    scope_prefix: str | None = None
+    if scope:
+        scope_prefix = scope if scope.endswith(".") else scope + "."
+
     offending: list[dict] = []
     for edge in graph.all_edges():
         if rel is not None:
@@ -119,6 +127,9 @@ def check_deny(rule: Rule, graph: SemGraph) -> Violation | None:
                 continue
         elif edge.rel.value not in _COUPLING_RELS:
             continue
+        if scope_prefix is not None:
+            if edge.source != scope and not edge.source.startswith(scope_prefix):
+                continue
         if fnmatch.fnmatch(edge.source, source_glob) and fnmatch.fnmatch(edge.target, target_glob):
             offending.append({
                 "source": edge.source,
@@ -196,11 +207,13 @@ def _scope_graph_for_rule(graph: SemGraph, scope: str) -> SemGraph:
 
 def check_rule(rule: Rule, graph: SemGraph) -> Violation | None:
     """Check a single rule against the graph."""
+    if rule.type == "deny":
+        # Deny rules handle scope internally so cross-boundary targets
+        # are visible for pattern matching.
+        return check_deny(rule, graph, scope=rule.scope)
     if rule.scope:
         graph = _scope_graph_for_rule(graph, rule.scope)
-    if rule.type == "deny":
-        return check_deny(rule, graph)
-    elif rule.type == "invariant":
+    if rule.type == "invariant":
         return check_invariant(rule, graph)
     else:
         raise ValueError(f"unknown rule type: {rule.type!r}")

@@ -280,3 +280,33 @@ def test_diff_fuzzy_no_match_low_similarity():
     assert len(result.renamed_nodes) == 0
     assert len(result.added_nodes) == 1
     assert len(result.removed_nodes) == 1
+
+
+def test_diff_detects_content_hash_change():
+    """Same name, different content_hash — must not be is_empty."""
+    old = SemGraph()
+    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
+                       metadata={"content_hash": "aaaa", "structure_hash": "ssss"}))
+    new = SemGraph()
+    new.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
+                       metadata={"content_hash": "bbbb", "structure_hash": "ssss"}))
+    result = diff_graphs(old, new)
+    assert not result.is_empty
+    node, changes = result.changed_nodes[0]
+    fields = {c.field for c in changes}
+    assert "content_hash" in fields
+
+
+def test_diff_detects_structure_hash_change():
+    """Same name, different structure_hash — must not be is_empty."""
+    old = SemGraph()
+    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
+                       metadata={"content_hash": "aaaa", "structure_hash": "s1"}))
+    new = SemGraph()
+    new.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
+                       metadata={"content_hash": "aaaa", "structure_hash": "s2"}))
+    result = diff_graphs(old, new)
+    assert not result.is_empty
+    _, changes = result.changed_nodes[0]
+    fields = {c.field for c in changes}
+    assert "structure_hash" in fields

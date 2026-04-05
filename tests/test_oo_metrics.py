@@ -387,3 +387,47 @@ def test_all_metrics_on_class_graph():
     assert isinstance(lcom4(g), dict)
     assert isinstance(martin_metrics(g), dict)
     assert isinstance(sdp_violations(g), list)
+
+
+def test_sdp_detects_member_level_violation():
+    """SDP should detect violations when the dependency is at class/method level."""
+    g = SemGraph()
+    # stable_mod: depended on by two users, low Ce -> low instability
+    g.add_node(_node("stable_mod"))
+    g.add_node(_node("stable_mod.StableClass", NodeType.CLASS))
+    g.add_edge(_edge("stable_mod", "stable_mod.StableClass"))
+    g.add_node(_node("stable_mod.StableClass.method", NodeType.METHOD))
+    g.add_edge(_edge("stable_mod.StableClass", "stable_mod.StableClass.method"))
+
+    # unstable_mod: depends on three others, no one depends on it -> high instability
+    g.add_node(_node("unstable_mod"))
+    g.add_node(_node("unstable_mod.UnstableClass", NodeType.CLASS))
+    g.add_edge(_edge("unstable_mod", "unstable_mod.UnstableClass"))
+    g.add_node(_node("unstable_mod.UnstableClass.do_thing", NodeType.METHOD))
+    g.add_edge(_edge("unstable_mod.UnstableClass", "unstable_mod.UnstableClass.do_thing"))
+
+    # Dependencies to establish instability values
+    g.add_node(_node("dep1"))
+    g.add_node(_node("dep2"))
+    g.add_node(_node("dep3"))
+    g.add_node(_node("user1"))
+    g.add_node(_node("user2"))
+
+    g.add_edge(Edge(source="user1", target="stable_mod", rel=RelType.IMPORTS))
+    g.add_edge(Edge(source="user2", target="stable_mod", rel=RelType.IMPORTS))
+    g.add_edge(Edge(source="unstable_mod", target="dep1", rel=RelType.IMPORTS))
+    g.add_edge(Edge(source="unstable_mod", target="dep2", rel=RelType.IMPORTS))
+    g.add_edge(Edge(source="unstable_mod", target="dep3", rel=RelType.IMPORTS))
+
+    # The violation: stable class method calls unstable class method (member-level)
+    g.add_edge(Edge(
+        source="stable_mod.StableClass.method",
+        target="unstable_mod.UnstableClass.do_thing",
+        rel=RelType.CALLS,
+    ))
+
+    violations = sdp_violations(g)
+    assert len(violations) >= 1
+    v = violations[0]
+    assert v["source"] == "stable_mod"
+    assert v["target"] == "unstable_mod"

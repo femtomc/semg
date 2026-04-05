@@ -351,3 +351,38 @@ def test_cli_check_text_output(tmp_path):
     assert "FAIL" in result.output
     assert "PASS" in result.output
     assert "ui.app" in result.output
+
+
+# --- Scoped deny rules ---
+
+
+def test_scoped_deny_catches_cross_boundary():
+    """A scoped deny rule must detect edges whose target is outside the scope."""
+    g = SemGraph()
+    g.add_node(Node(name="api.service", type=NodeType.FUNCTION))
+    g.add_node(Node(name="db.query", type=NodeType.FUNCTION))
+    g.add_edge(Edge(source="api.service", target="db.query", rel=RelType.CALLS))
+
+    r = Rule(name="no-api-db", type="deny", pattern="api.* -> db.*", scope="api")
+    v = check_rule(r, g)
+    assert v is not None
+    assert len(v.edges) == 1
+    assert v.edges[0]["source"] == "api.service"
+    assert v.edges[0]["target"] == "db.query"
+
+
+def test_scoped_deny_ignores_out_of_scope_source():
+    """A scoped deny rule should not flag edges originating outside the scope."""
+    g = SemGraph()
+    g.add_node(Node(name="api.service", type=NodeType.FUNCTION))
+    g.add_node(Node(name="db.query", type=NodeType.FUNCTION))
+    g.add_node(Node(name="web.handler", type=NodeType.FUNCTION))
+    g.add_edge(Edge(source="api.service", target="db.query", rel=RelType.CALLS))
+    g.add_edge(Edge(source="web.handler", target="db.query", rel=RelType.CALLS))
+
+    # scope=api: only api.service -> db.query should be checked
+    r = Rule(name="no-all-db", type="deny", pattern="*.* -> db.*", scope="api")
+    v = check_rule(r, g)
+    assert v is not None
+    assert len(v.edges) == 1
+    assert v.edges[0]["source"] == "api.service"

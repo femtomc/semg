@@ -115,6 +115,25 @@ def _strip_extension(filename: str) -> str | None:
     return None
 
 
+def _split_exclude_patterns(
+    patterns: list[str],
+) -> tuple[list[str], list[str]]:
+    """Split patterns into basename-only and path-aware groups.
+
+    Patterns containing ``/`` are path-aware and matched against relative
+    paths from root.  All others match basenames (the original behavior).
+    """
+    basename_pats: list[str] = []
+    path_pats: list[str] = []
+    for pat in patterns:
+        if "/" in pat:
+            # Strip leading/trailing slashes for consistent matching
+            path_pats.append(pat.strip("/"))
+        else:
+            basename_pats.append(pat)
+    return basename_pats, path_pats
+
+
 def collect_files(
     paths: list[Path],
     root: Path,
@@ -122,6 +141,7 @@ def collect_files(
 ) -> list[Path]:
     """Walk paths and collect files with registered extensions."""
     all_excludes = DEFAULT_EXCLUDES + load_smgignore(root) + (excludes or [])
+    basename_pats, path_pats = _split_exclude_patterns(all_excludes)
     files: list[Path] = []
 
     for path in paths:
@@ -132,15 +152,30 @@ def collect_files(
                 files.append(path)
         elif path.is_dir():
             for dirpath, dirnames, filenames in os.walk(path):
+                dp = Path(dirpath)
+                try:
+                    rel_dir = str(dp.relative_to(root))
+                except ValueError:
+                    rel_dir = str(dp)
+
                 # Prune excluded directories in-place
-                dirnames[:] = [
-                    d for d in dirnames
-                    if not any(fnmatch.fnmatch(d, pat) for pat in all_excludes)
-                ]
-                for fname in filenames:
-                    if any(fnmatch.fnmatch(fname, pat) for pat in all_excludes):
+                pruned: list[str] = []
+                for d in dirnames:
+                    if any(fnmatch.fnmatch(d, pat) for pat in basename_pats):
                         continue
-                    fpath = Path(dirpath) / fname
+                    child_rel = d if rel_dir == "." else f"{rel_dir}/{d}"
+                    if any(fnmatch.fnmatch(child_rel, pat) for pat in path_pats):
+                        continue
+                    pruned.append(d)
+                dirnames[:] = pruned
+
+                for fname in filenames:
+                    if any(fnmatch.fnmatch(fname, pat) for pat in basename_pats):
+                        continue
+                    file_rel = fname if rel_dir == "." else f"{rel_dir}/{fname}"
+                    if any(fnmatch.fnmatch(file_rel, pat) for pat in path_pats):
+                        continue
+                    fpath = dp / fname
                     ext = fpath.suffix
                     if get_extractor(ext) is not None:
                         files.append(fpath)
@@ -175,18 +210,45 @@ def scan_paths(
     files = collect_files(paths, root, excludes)
 
     # Smart clean phase: only remove scan-sourced nodes from files about to be rescanned.
+    # Also remove nodes whose source file has been deleted from disk (within
+    # the scanned paths) so that renames/deletes don't leave stale nodes.
     # Collect orphaned manual edges before cascade-deleting nodes.
     if clean:
         rel_paths = {
             str(fpath.relative_to(root)) if fpath.is_relative_to(root) else str(fpath)
             for fpath in files
         }
-        to_remove = [
-            name for name, node in list(graph.nodes.items())
-            if node.file is not None
-            and node.file in rel_paths
-            and node.metadata.get("source") == "scan"
-        ]
+
+        # Resolve which directories are being scanned so we can detect
+        # stale nodes from deleted files under those directories.
+        scan_prefixes: list[str] = []
+        for p in paths:
+            p = p.resolve()
+            try:
+                rp = str(p.relative_to(root))
+            except ValueError:
+                rp = str(p)
+            if p.is_dir():
+                scan_prefixes.append(rp if rp == "." else rp + "/")
+            else:
+                # Individual file (possibly deleted): include its parent
+                parent = str(Path(rp).parent)
+                scan_prefixes.append(parent if parent == "." else parent + "/")
+
+        def _under_scan_paths(file_path: str) -> bool:
+            for prefix in scan_prefixes:
+                if prefix == "." or file_path.startswith(prefix):
+                    return True
+            return False
+
+        to_remove = []
+        for name, node in list(graph.nodes.items()):
+            if node.file is None or node.metadata.get("source") != "scan":
+                continue
+            if node.file in rel_paths:
+                to_remove.append(name)
+            elif not (root / node.file).exists() and _under_scan_paths(node.file):
+                to_remove.append(name)
         for name in to_remove:
             # Before removing, check for manual edges that will be orphaned
             seen_manual_edges: set[tuple[str, str, str]] = set()
@@ -340,7 +402,11 @@ def scan_paths(
 
 
 def changed_files(root: Path, since: str = "HEAD") -> list[Path]:
-    """Get files changed since a git ref, filtered to supported extensions."""
+    """Get files changed since a git ref, filtered to supported extensions.
+
+    Includes deleted files (which no longer exist on disk) so that callers
+    using ``clean=True`` can remove their stale graph nodes.
+    """
     try:
         # Changed tracked files
         diff = subprocess.run(
@@ -364,9 +430,7 @@ def changed_files(root: Path, since: str = "HEAD") -> list[Path]:
     result: list[Path] = []
     for f in all_files:
         if _strip_extension(Path(f).name) is not None:
-            fpath = root / f
-            if fpath.exists():
-                result.append(fpath)
+            result.append(root / f)
     return sorted(result)
 
 

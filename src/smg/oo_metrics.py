@@ -324,21 +324,48 @@ def sdp_violations(graph: SemGraph) -> list[dict]:
     A violation occurs when a stable module (low instability) depends on
     an unstable module (high instability). Dependencies should flow toward
     stability.
+
+    Checks all coupling edges (not just module-level imports) by mapping
+    each endpoint to its containing module.
     """
     metrics = martin_metrics(graph)
     violations: list[dict] = []
 
-    for edge in graph.iter_edges(rel_types={RelType.IMPORTS.value, RelType.DEPENDS_ON.value}):
-        source_metrics = metrics.get(edge.source)
-        target_metrics = metrics.get(edge.target)
+    # Build node -> module mapping so member-level edges are attributed
+    # to the correct module pair.
+    modules = [n.name for n in graph.iter_nodes() if n.type.value in ("module", "package")]
+    module_member_map: dict[str, set[str]] = {}
+    for mod in modules:
+        module_member_map[mod] = _module_members(graph, mod)
+
+    node_to_module: dict[str, str] = {}
+    for mod, members in module_member_map.items():
+        for member in members:
+            node_to_module[member] = mod
+        node_to_module[mod] = mod
+
+    checked: set[tuple[str, str]] = set()
+
+    for edge in graph.iter_edges(rel_types=_COUPLING_RELS):
+        source_mod = node_to_module.get(edge.source)
+        target_mod = node_to_module.get(edge.target)
+        if not source_mod or not target_mod or source_mod == target_mod:
+            continue
+        pair = (source_mod, target_mod)
+        if pair in checked:
+            continue
+        checked.add(pair)
+
+        source_metrics = metrics.get(source_mod)
+        target_metrics = metrics.get(target_mod)
         if source_metrics and target_metrics:
             si = source_metrics["instability"]
             ti = target_metrics["instability"]
             # Violation: source is more stable than target
             if si < ti and (ti - si) > 0.1:  # threshold to avoid noise
                 violations.append({
-                    "source": edge.source,
-                    "target": edge.target,
+                    "source": source_mod,
+                    "target": target_mod,
                     "source_instability": si,
                     "target_instability": ti,
                 })

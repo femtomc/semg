@@ -32,7 +32,7 @@ def compute_churn(
     file_index = _build_file_index(graph)
     hunks = _git_hunks(root, days=days, max_commits=max_commits, since_ref=since_ref)
 
-    entity_churn: dict[str, int] = defaultdict(int)
+    entity_touches: set[tuple[str, str]] = set()  # (commit, entity)
     file_churn: dict[str, int] = defaultdict(int)
     commit_set: set[str] = set()
 
@@ -44,7 +44,11 @@ def compute_churn(
             continue
         for start, end, name in file_index[hunk.file]:
             if start <= hunk.end_line and hunk.start_line <= end:
-                entity_churn[name] += 1
+                entity_touches.add((hunk.commit, name))
+
+    entity_churn: dict[str, int] = defaultdict(int)
+    for _, name in entity_touches:
+        entity_churn[name] += 1
 
     time_desc = f"last {days} days"
     if since_ref:
@@ -87,7 +91,7 @@ def _git_hunks(
     since_ref: str | None = None,
 ) -> list[_Hunk]:
     """Parse git log to extract per-file changed line ranges."""
-    cmd = ["git", "log", "--unified=0", "--diff-filter=M", "--no-color", "-p"]
+    cmd = ["git", "log", "--unified=0", "--no-color", "-p"]
 
     if since_ref:
         cmd.append(f"{since_ref}..HEAD")

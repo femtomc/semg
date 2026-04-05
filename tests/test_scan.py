@@ -538,3 +538,78 @@ def main():
     targets = {e.target for e in edges}
     assert "app.core.a" in targets
     assert "app.core.b" in targets
+
+
+# --- Stale node cleanup tests ---
+
+
+@needs_tree_sitter
+def test_scan_clean_removes_deleted_file_nodes(tmp_path):
+    """Deleting a source file and rescanning with clean=True removes its nodes."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "a.py").write_text("def foo():\n    pass\n")
+    (pkg / "b.py").write_text("def bar():\n    pass\n")
+
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    assert graph.get_node("app.a") is not None
+    assert graph.get_node("app.a.foo") is not None
+    assert graph.get_node("app.b") is not None
+
+    # Delete a.py and rescan
+    (pkg / "a.py").unlink()
+    scan_paths(graph, root, [root / "src"], clean=True)
+
+    assert graph.get_node("app.a") is None
+    assert graph.get_node("app.a.foo") is None
+    # b.py nodes should survive
+    assert graph.get_node("app.b") is not None
+    assert graph.get_node("app.b.bar") is not None
+
+
+# --- .smgignore path pattern tests ---
+
+
+def test_collect_files_path_pattern(tmp_path):
+    """Patterns containing / match against relative paths, not just basenames."""
+    from smg.langs import load_extractors
+    load_extractors()
+
+    gen = tmp_path / "src" / "generated"
+    gen.mkdir(parents=True)
+    (gen / "skip.py").write_text("x = 1")
+
+    keep_dir = tmp_path / "src" / "app"
+    keep_dir.mkdir(parents=True)
+    (keep_dir / "keep.py").write_text("x = 1")
+
+    # Write .smgignore with a path pattern
+    (tmp_path / ".smgignore").write_text("src/generated/*\n")
+
+    files = collect_files([tmp_path], tmp_path)
+    names = [f.name for f in files]
+    assert "keep.py" in names
+    assert "skip.py" not in names
+
+
+def test_collect_files_basename_pattern_still_works(tmp_path):
+    """Basename-only patterns (no /) still match anywhere in the tree."""
+    from smg.langs import load_extractors
+    load_extractors()
+
+    (tmp_path / "good.py").write_text("x = 1")
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    (nested / "bad_generated.py").write_text("x = 1")
+
+    (tmp_path / ".smgignore").write_text("bad_generated.py\n")
+
+    files = collect_files([tmp_path], tmp_path)
+    names = [f.name for f in files]
+    assert "good.py" in names
+    assert "bad_generated.py" not in names
