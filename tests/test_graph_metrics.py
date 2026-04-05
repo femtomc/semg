@@ -1,4 +1,5 @@
 """Tests for graph-theoretic metrics."""
+
 from smg.graph import SemGraph
 from smg.graph_metrics import (
     betweenness_centrality,

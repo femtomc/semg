@@ -1,5 +1,6 @@
 """Tests for graph diffing."""
-from smg.diff import GraphDiff, RenamedNode, diff_graphs
+
+from smg.diff import diff_graphs
 from smg.graph import SemGraph
 from smg.model import Edge, Node, NodeType, RelType
 
@@ -7,7 +8,15 @@ from smg.model import Edge, Node, NodeType, RelType
 def _make_graph() -> SemGraph:
     g = SemGraph()
     g.add_node(Node(name="app", type=NodeType.MODULE))
-    g.add_node(Node(name="app.main", type=NodeType.FUNCTION, file="app.py", line=1, docstring="Entry"))
+    g.add_node(
+        Node(
+            name="app.main",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            docstring="Entry",
+        )
+    )
     g.add_node(Node(name="app.Server", type=NodeType.CLASS, file="app.py", line=10))
     g.add_edge(Edge(source="app", target="app.main", rel=RelType.CONTAINS))
     g.add_edge(Edge(source="app", target="app.Server", rel=RelType.CONTAINS))
@@ -34,7 +43,15 @@ def test_diff_removed_node():
     old = _make_graph()
     new = SemGraph()
     new.add_node(Node(name="app", type=NodeType.MODULE))
-    new.add_node(Node(name="app.main", type=NodeType.FUNCTION, file="app.py", line=1, docstring="Entry"))
+    new.add_node(
+        Node(
+            name="app.main",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            docstring="Entry",
+        )
+    )
     new.add_edge(Edge(source="app", target="app.main", rel=RelType.CONTAINS))
     result = diff_graphs(old, new)
     assert len(result.removed_nodes) == 1
@@ -89,7 +106,15 @@ def test_diff_removed_edge():
     old = _make_graph()
     new = SemGraph()
     new.add_node(Node(name="app", type=NodeType.MODULE))
-    new.add_node(Node(name="app.main", type=NodeType.FUNCTION, file="app.py", line=1, docstring="Entry"))
+    new.add_node(
+        Node(
+            name="app.main",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            docstring="Entry",
+        )
+    )
     new.add_node(Node(name="app.Server", type=NodeType.CLASS, file="app.py", line=10))
     # Only one edge instead of two
     new.add_edge(Edge(source="app", target="app.main", rel=RelType.CONTAINS))
@@ -122,7 +147,15 @@ def test_diff_multiple_changes():
     new = SemGraph()
     # Keep app, modify main, remove Server, add helper
     new.add_node(Node(name="app", type=NodeType.MODULE))
-    new.add_node(Node(name="app.main", type=NodeType.FUNCTION, file="app.py", line=5, docstring="Updated"))
+    new.add_node(
+        Node(
+            name="app.main",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=5,
+            docstring="Updated",
+        )
+    )
     new.add_node(Node(name="app.helper", type=NodeType.FUNCTION))
     new.add_edge(Edge(source="app", target="app.main", rel=RelType.CONTAINS))
     new.add_edge(Edge(source="app", target="app.helper", rel=RelType.CONTAINS))
@@ -163,11 +196,31 @@ def test_diff_cli(tmp_path):
 def test_diff_rename_by_content_hash():
     """Exact content match detects a pure rename."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "abcd1234abcd1234", "structure_hash": "efgh5678efgh5678"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={
+                "content_hash": "abcd1234abcd1234",
+                "structure_hash": "efgh5678efgh5678",
+            },
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.bar", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "abcd1234abcd1234", "structure_hash": "efgh5678efgh5678"}))
+    new.add_node(
+        Node(
+            name="app.bar",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={
+                "content_hash": "abcd1234abcd1234",
+                "structure_hash": "efgh5678efgh5678",
+            },
+        )
+    )
 
     result = diff_graphs(old, new)
     assert len(result.renamed_nodes) == 1
@@ -181,11 +234,25 @@ def test_diff_rename_by_content_hash():
 def test_diff_rename_by_structure_hash():
     """Structure match detects a rename with minor content changes."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "aaaa", "structure_hash": "same_struct_hash"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "aaaa", "structure_hash": "same_struct_hash"},
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.bar", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "bbbb", "structure_hash": "same_struct_hash"}))
+    new.add_node(
+        Node(
+            name="app.bar",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "bbbb", "structure_hash": "same_struct_hash"},
+        )
+    )
 
     result = diff_graphs(old, new)
     assert len(result.renamed_nodes) == 1
@@ -197,13 +264,28 @@ def test_diff_rename_by_structure_hash():
 def test_diff_ambiguous_rename_skipped():
     """Two removed nodes with same structure hash — ambiguous, no rename detected."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "aaaa", "structure_hash": "same"}))
-    old.add_node(Node(name="app.baz", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "cccc", "structure_hash": "same"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "aaaa", "structure_hash": "same"},
+        )
+    )
+    old.add_node(
+        Node(
+            name="app.baz",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "cccc", "structure_hash": "same"},
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.bar", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "bbbb", "structure_hash": "same"}))
+    new.add_node(
+        Node(
+            name="app.bar",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "bbbb", "structure_hash": "same"},
+        )
+    )
 
     result = diff_graphs(old, new)
     assert len(result.renamed_nodes) == 0
@@ -227,11 +309,21 @@ def test_diff_no_hashes_no_renames():
 def test_diff_rename_disabled():
     """detect_renames=False skips rename detection."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "same", "structure_hash": "same"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "same", "structure_hash": "same"},
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.bar", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "same", "structure_hash": "same"}))
+    new.add_node(
+        Node(
+            name="app.bar",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "same", "structure_hash": "same"},
+        )
+    )
 
     result = diff_graphs(old, new, detect_renames=False)
     assert len(result.renamed_nodes) == 0
@@ -243,12 +335,22 @@ def test_diff_fuzzy_rename():
     """Phase 3: fuzzy Jaccard match on names with high token overlap (>= 0.8)."""
     old = SemGraph()
     # 4 tokens: app, utils, parse, config
-    old.add_node(Node(name="app.utils.parse_config", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "aaaa", "structure_hash": "xxxx"}))
+    old.add_node(
+        Node(
+            name="app.utils.parse_config",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "aaaa", "structure_hash": "xxxx"},
+        )
+    )
     new = SemGraph()
     # 5 tokens: app, utils, helpers, parse, config — intersection=4, union=5, J=0.8
-    new.add_node(Node(name="app.utils.helpers.parse_config", type=NodeType.FUNCTION,
-                       metadata={"content_hash": "bbbb", "structure_hash": "yyyy"}))
+    new.add_node(
+        Node(
+            name="app.utils.helpers.parse_config",
+            type=NodeType.FUNCTION,
+            metadata={"content_hash": "bbbb", "structure_hash": "yyyy"},
+        )
+    )
 
     result = diff_graphs(old, new)
     assert len(result.renamed_nodes) == 1
@@ -285,11 +387,25 @@ def test_diff_fuzzy_no_match_low_similarity():
 def test_diff_detects_content_hash_change():
     """Same name, different content_hash — must not be is_empty."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "aaaa", "structure_hash": "ssss"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "aaaa", "structure_hash": "ssss"},
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "bbbb", "structure_hash": "ssss"}))
+    new.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "bbbb", "structure_hash": "ssss"},
+        )
+    )
     result = diff_graphs(old, new)
     assert not result.is_empty
     node, changes = result.changed_nodes[0]
@@ -300,11 +416,25 @@ def test_diff_detects_content_hash_change():
 def test_diff_detects_structure_hash_change():
     """Same name, different structure_hash — must not be is_empty."""
     old = SemGraph()
-    old.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "aaaa", "structure_hash": "s1"}))
+    old.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "aaaa", "structure_hash": "s1"},
+        )
+    )
     new = SemGraph()
-    new.add_node(Node(name="app.foo", type=NodeType.FUNCTION, file="app.py", line=1,
-                       metadata={"content_hash": "aaaa", "structure_hash": "s2"}))
+    new.add_node(
+        Node(
+            name="app.foo",
+            type=NodeType.FUNCTION,
+            file="app.py",
+            line=1,
+            metadata={"content_hash": "aaaa", "structure_hash": "s2"},
+        )
+    )
     result = diff_graphs(old, new)
     assert not result.is_empty
     _, changes = result.changed_nodes[0]

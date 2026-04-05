@@ -6,13 +6,13 @@ import rich_click as click
 from rich.table import Table
 
 from smg.cli import (
-    main,
-    _load,
-    _auto_fmt,
-    console,
-    err_console,
     EXIT_NOT_FOUND,
     EXIT_VALIDATION,
+    _auto_fmt,
+    _load,
+    console,
+    err_console,
+    main,
 )
 
 
@@ -24,11 +24,31 @@ def rule() -> None:
 
 @rule.command("add")
 @click.argument("name")
-@click.option("--deny", "deny_pattern", default=None, help='Path denial pattern: "source_glob -[rel]-> target_glob"')
-@click.option("--invariant", default=None, type=click.Choice(["no-cycles", "no-dead-code", "no-layering-violations"]), help="Structural invariant to enforce")
-@click.option("--entry-points", default=None, help="Comma-separated entry points for no-dead-code (supports globs)")
+@click.option(
+    "--deny",
+    "deny_pattern",
+    default=None,
+    help='Path denial pattern: "source_glob -[rel]-> target_glob"',
+)
+@click.option(
+    "--invariant",
+    default=None,
+    type=click.Choice(["no-cycles", "no-dead-code", "no-layering-violations"]),
+    help="Structural invariant to enforce",
+)
+@click.option(
+    "--entry-points",
+    default=None,
+    help="Comma-separated entry points for no-dead-code (supports globs)",
+)
 @click.option("--scope", default=None, help="Restrict rule to nodes under this module prefix")
-def rule_add(name: str, deny_pattern: str | None, invariant: str | None, entry_points: str | None, scope: str | None) -> None:
+def rule_add(
+    name: str,
+    deny_pattern: str | None,
+    invariant: str | None,
+    entry_points: str | None,
+    scope: str | None,
+) -> None:
     """Add an architectural rule.
 
     \b
@@ -65,7 +85,9 @@ def rule_add(name: str, deny_pattern: str | None, invariant: str | None, entry_p
     _graph, root = _load()
     rules = load_rules(root)
     if any(r.name == name for r in rules):
-        err_console.print(f"[red]Error:[/] rule {name!r} already exists. Remove it first with [bold]smg rule rm {name}[/].")
+        err_console.print(
+            f"[red]Error:[/] rule {name!r} already exists. Remove it first with [bold]smg rule rm {name}[/]."
+        )
         sys.exit(EXIT_VALIDATION)
     rules.append(new_rule)
     save_rules(rules, root)
@@ -73,7 +95,13 @@ def rule_add(name: str, deny_pattern: str | None, invariant: str | None, entry_p
 
 
 @rule.command("list")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format",
+)
 def rule_list(fmt: str | None) -> None:
     """List all architectural rules."""
     import json as json_mod
@@ -125,7 +153,13 @@ def rule_rm(name: str) -> None:
 
 @main.command()
 @click.argument("name", required=False, default=None)
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format",
+)
 def check(name: str | None, fmt: str | None) -> None:
     """Check architectural rules against the current graph.
 
@@ -141,7 +175,7 @@ def check(name: str | None, fmt: str | None) -> None:
     """
     import json as json_mod
 
-    from smg.rules import check_all, check_rule
+    from smg.rules import check_all
     from smg.storage import load_rules
 
     graph, root = _load()

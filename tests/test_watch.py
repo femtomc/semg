@@ -1,15 +1,15 @@
 """Tests for file watcher."""
-import json
+
 import os
 import threading
 import time
-from pathlib import Path
 
 import pytest
 
 try:
     import tree_sitter_python
     from watchdog.observers import Observer
+
     HAS_DEPS = True
 except ImportError:
     HAS_DEPS = False
@@ -20,8 +20,8 @@ needs_deps = pytest.mark.skipif(not HAS_DEPS, reason="tree-sitter-python or watc
 @needs_deps
 def test_watch_detects_change(tmp_path):
     """Watch detects a file change and rescans."""
-    from smg.watch import watch_and_scan
     from smg.storage import init_project, load_graph
+    from smg.watch import watch_and_scan
 
     root = tmp_path
     pkg = root / "src" / "app"
@@ -33,9 +33,11 @@ def test_watch_detects_change(tmp_path):
 
     # Initial scan
     from smg.scan import scan_paths
+
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
     from smg.storage import save_graph
+
     save_graph(graph, root)
 
     # Track scan events
@@ -93,6 +95,7 @@ def test_watch_ignores_excluded(tmp_path):
 def test_watch_cli_starts(tmp_path):
     """CLI watch command starts without error (immediate Ctrl+C)."""
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = tmp_path

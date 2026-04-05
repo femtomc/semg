@@ -4,25 +4,34 @@ All functions operate on SemGraph using only coupling edges
 (calls, imports, inherits, implements, depends_on) — structural
 containment edges are excluded since they encode hierarchy, not coupling.
 """
+
 from __future__ import annotations
 
 import random
 from collections import defaultdict, deque
+from typing import TYPE_CHECKING
 
 from smg.graph import SemGraph
 from smg.model import RelType
 
+if TYPE_CHECKING:
+    from smg.model import Node
+
 # Edge types that represent coupling (not containment/annotation)
-_COUPLING_RELS = frozenset({
-    RelType.CALLS.value,
-    RelType.IMPORTS.value,
-    RelType.INHERITS.value,
-    RelType.IMPLEMENTS.value,
-    RelType.DEPENDS_ON.value,
-})
+_COUPLING_RELS = frozenset(
+    {
+        RelType.CALLS.value,
+        RelType.IMPORTS.value,
+        RelType.INHERITS.value,
+        RelType.IMPLEMENTS.value,
+        RelType.DEPENDS_ON.value,
+    }
+)
 
 
-def _coupling_adj(graph: SemGraph) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
+def _coupling_adj(
+    graph: SemGraph,
+) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
     """Build directed adjacency lists from coupling edges only.
 
     Returns (forward_adj, reverse_adj, all_nodes_in_coupling_graph).
@@ -284,6 +293,7 @@ def betweenness_centrality(
     # Try native accelerator first
     try:
         from smg._accel import betweenness_centrality_native
+
         result = betweenness_centrality_native(adj, nodes, sample_threshold, sample_size)
         if result is not None:
             return result
@@ -407,7 +417,7 @@ def detect_bridges(graph: SemGraph) -> list[tuple[str, str]]:
         dfs_stack: list[tuple[str, str | None, list[str], int]] = []
         disc[start] = low[start] = timer[0]
         timer[0] += 1
-        neighbors = tuple(adj.get(start, ()))
+        neighbors = list(adj.get(start, ()))
         dfs_stack.append((start, None, neighbors, 0))
 
         while dfs_stack:
@@ -420,7 +430,7 @@ def detect_bridges(graph: SemGraph) -> list[tuple[str, str]]:
                 if w not in disc:
                     disc[w] = low[w] = timer[0]
                     timer[0] += 1
-                    dfs_stack.append((w, v, tuple(adj.get(w, ())), 0))
+                    dfs_stack.append((w, v, list(adj.get(w, ())), 0))
                 elif w != parent:
                     low[v] = min(low[v], disc[w])
             else:
@@ -516,14 +526,18 @@ def dead_code(
     """
     from smg.model import NodeType
 
-    _STRUCTURAL_TYPES = frozenset({
-        NodeType.MODULE.value,
-        NodeType.PACKAGE.value,
-    })
-    _ENTRY_TYPES = frozenset({
-        NodeType.ENDPOINT.value,
-        NodeType.CONFIG.value,
-    })
+    _STRUCTURAL_TYPES = frozenset(
+        {
+            NodeType.MODULE.value,
+            NodeType.PACKAGE.value,
+        }
+    )
+    _ENTRY_TYPES = frozenset(
+        {
+            NodeType.ENDPOINT.value,
+            NodeType.CONFIG.value,
+        }
+    )
 
     if entry_points is None:
         entry_points = set()
@@ -639,15 +653,17 @@ def god_files(
             reasons.append(f"many concerns ({len(external_files)} external files)")
 
         if reasons:
-            results.append({
-                "file": file_path,
-                "total_cc": total_cc,
-                "max_cc": max_cc,
-                "num_functions": len(functions),
-                "num_classes": len(classes),
-                "concerns": len(external_files),
-                "reasons": reasons,
-            })
+            results.append(
+                {
+                    "file": file_path,
+                    "total_cc": total_cc,
+                    "max_cc": max_cc,
+                    "num_functions": len(functions),
+                    "num_classes": len(classes),
+                    "concerns": len(external_files),
+                    "reasons": reasons,
+                }
+            )
 
     return sorted(results, key=lambda r: r["total_cc"], reverse=True)
 
@@ -674,13 +690,15 @@ def layering_violations(graph: SemGraph) -> list[dict]:
         sl = layers.get(edge.source)
         tl = layers.get(edge.target)
         if sl is not None and tl is not None and sl <= tl:
-            violations.append({
-                "source": edge.source,
-                "target": edge.target,
-                "rel": edge.rel.value,
-                "source_layer": sl,
-                "target_layer": tl,
-            })
+            violations.append(
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "rel": edge.rel.value,
+                    "source_layer": sl,
+                    "target_layer": tl,
+                }
+            )
 
     return sorted(violations, key=lambda v: (v["target_layer"] - v["source_layer"], v["source"]))
 
@@ -705,6 +723,7 @@ def hits(
     # Try native accelerator first
     try:
         from smg._accel import hits_native
+
         result = hits_native(fwd, rev, nodes, iterations)
         if result is not None:
             return result
@@ -780,8 +799,8 @@ def minimal_cycle(graph: SemGraph, scc: list[str]) -> list[str]:
                 if neighbor == start:
                     # Found a cycle back to start -- reconstruct path
                     path = [start]
-                    n = current
-                    while n != start:
+                    n: str | None = current
+                    while n is not None and n != start:
                         path.append(n)
                         n = visited[n]
                     path.reverse()

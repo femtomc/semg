@@ -4,6 +4,7 @@ Computes CK metrics suite (WMC, DIT, NOC, CBO, RFC, LCOM4) per class,
 and Martin's package metrics (Ca, Ce, Instability, Abstractness, Distance)
 per module. All functions are pure — they take a SemGraph and return dicts.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -11,13 +12,15 @@ from collections import defaultdict
 from smg.graph import SemGraph
 from smg.model import NodeType, RelType
 
-_COUPLING_RELS = frozenset({
-    RelType.CALLS.value,
-    RelType.IMPORTS.value,
-    RelType.INHERITS.value,
-    RelType.IMPLEMENTS.value,
-    RelType.DEPENDS_ON.value,
-})
+_COUPLING_RELS = frozenset(
+    {
+        RelType.CALLS.value,
+        RelType.IMPORTS.value,
+        RelType.INHERITS.value,
+        RelType.IMPLEMENTS.value,
+        RelType.DEPENDS_ON.value,
+    }
+)
 
 _METHOD_TYPES = frozenset({NodeType.FUNCTION.value, NodeType.METHOD.value})
 
@@ -300,7 +303,9 @@ def martin_metrics(graph: SemGraph) -> dict[str, dict]:
         instability = ce / (ca + ce) if (ca + ce) > 0 else 0.0
 
         # Abstractness: ratio of interfaces/abstract classes to total classes
-        classes_in_mod = [m for m in members if graph.get_node(m) and graph.get_node(m).type.value in ("class", "interface")]
+        classes_in_mod = [
+            m for m in members if graph.get_node(m) and graph.get_node(m).type.value in ("class", "interface")
+        ]
         abstract_count = sum(1 for m in classes_in_mod if graph.get_node(m).type == NodeType.INTERFACE)
         total_classes = len(classes_in_mod)
         abstractness = abstract_count / total_classes if total_classes > 0 else 0.0
@@ -363,14 +368,20 @@ def sdp_violations(graph: SemGraph) -> list[dict]:
             ti = target_metrics["instability"]
             # Violation: source is more stable than target
             if si < ti and (ti - si) > 0.1:  # threshold to avoid noise
-                violations.append({
-                    "source": source_mod,
-                    "target": target_mod,
-                    "source_instability": si,
-                    "target_instability": ti,
-                })
+                violations.append(
+                    {
+                        "source": source_mod,
+                        "target": target_mod,
+                        "source_instability": si,
+                        "target_instability": ti,
+                    }
+                )
 
-    return sorted(violations, key=lambda v: v["target_instability"] - v["source_instability"], reverse=True)
+    return sorted(
+        violations,
+        key=lambda v: v["target_instability"] - v["source_instability"],
+        reverse=True,
+    )
 
 
 # --- Code Smell Detection ---
@@ -399,14 +410,16 @@ def god_classes(
     for name in wmc_data:
         w = wmc_data.get(name, 0)
         c = cbo_data.get(name, 0)
-        l = lcom_data.get(name, 0)
-        if w >= wmc_threshold and c >= cbo_threshold and l >= lcom_threshold:
-            results.append({
-                "name": name,
-                "wmc": w,
-                "cbo": c,
-                "lcom4": l,
-            })
+        lcom = lcom_data.get(name, 0)
+        if w >= wmc_threshold and c >= cbo_threshold and lcom >= lcom_threshold:
+            results.append(
+                {
+                    "name": name,
+                    "wmc": w,
+                    "cbo": c,
+                    "lcom4": lcom,
+                }
+            )
 
     return sorted(results, key=lambda r: r["wmc"], reverse=True)
 
@@ -447,13 +460,15 @@ def feature_envy(graph: SemGraph) -> list[dict]:
             # Find the most-referenced external class
             envied, envied_count = max(external_refs.items(), key=lambda x: x[1])
             if envied_count > own_refs and envied_count >= 2:
-                results.append({
-                    "method": method,
-                    "own_class": node.name,
-                    "envied_class": envied,
-                    "own_refs": own_refs,
-                    "envied_refs": envied_count,
-                })
+                results.append(
+                    {
+                        "method": method,
+                        "own_class": node.name,
+                        "envied_class": envied,
+                        "own_refs": own_refs,
+                        "envied_refs": envied_count,
+                    }
+                )
 
     return sorted(results, key=lambda r: r["envied_refs"] - r["own_refs"], reverse=True)
 
@@ -481,11 +496,13 @@ def shotgun_surgery(
                 targets.add(edge.target)
 
         if len(targets) >= fan_out_threshold:
-            results.append({
-                "name": node.name,
-                "type": node.type.value,
-                "fan_out": len(targets),
-                "targets": sorted(targets),
-            })
+            results.append(
+                {
+                    "name": node.name,
+                    "type": node.type.value,
+                    "fan_out": len(targets),
+                    "targets": sorted(targets),
+                }
+            )
 
     return sorted(results, key=lambda r: r["fan_out"], reverse=True)

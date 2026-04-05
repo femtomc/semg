@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- Python: lint + format ---
+echo "ruff check..."
+uv run ruff check src/ tests/
+
+echo "ruff format..."
+uv run ruff format --check src/ tests/
+
+# --- Python: type check ---
+echo "pyright..."
+uv run pyright src/
+
+# --- Python: tests ---
+echo "pytest..."
+uv run pytest tests/ -x -q
+
+# --- Zig: format + build ---
+if [ -d native/src ]; then
+    echo "zig fmt..."
+    zig fmt --check native/src/
+
+    echo "zig build..."
+    (cd native && zig build)
+fi
+
+# --- smg self-analysis ---
+echo "smg scan..."
+uv run smg scan src/ --clean >/dev/null
+
+echo "smg check..."
+uv run smg check --format json

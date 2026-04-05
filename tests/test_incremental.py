@@ -1,17 +1,17 @@
 """Tests for provenance tracking, smart clean, orphan detection, and incremental scan."""
+
 import json
 import os
-from pathlib import Path
 
 import pytest
 
-from smg.graph import SemGraph
 from smg.model import Edge, Node, NodeType, RelType
 from smg.scan import scan_paths
 from smg.storage import init_project, load_graph, save_graph
 
 try:
     import tree_sitter_python
+
     HAS_TS = True
 except ImportError:
     HAS_TS = False
@@ -68,6 +68,7 @@ def test_scan_sets_provenance_on_edges(tmp_path):
 @needs_tree_sitter
 def test_manual_add_sets_provenance(tmp_path):
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = _write_project(tmp_path)
@@ -84,6 +85,7 @@ def test_manual_add_sets_provenance(tmp_path):
 @needs_tree_sitter
 def test_manual_link_sets_provenance(tmp_path):
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = _write_project(tmp_path)
@@ -166,12 +168,14 @@ def test_orphan_detection(tmp_path):
     # Add a manual edge from a scan node to a manual node
     manual_target = Node(name="external.service", type=NodeType.CLASS, metadata={"source": "manual"})
     graph.add_node(manual_target)
-    graph.add_edge(Edge(
-        source="app.core.helper",
-        target="external.service",
-        rel=RelType.CALLS,
-        metadata={"source": "manual"},
-    ))
+    graph.add_edge(
+        Edge(
+            source="app.core.helper",
+            target="external.service",
+            rel=RelType.CALLS,
+            metadata={"source": "manual"},
+        )
+    )
     save_graph(graph, root)
 
     # Now remove helper from source
@@ -196,17 +200,19 @@ def test_no_orphans_when_manual_edges_intact(tmp_path):
     scan_paths(graph, root, [root / "src"])
 
     # Add manual edge between two scan nodes
-    graph.add_edge(Edge(
-        source="app.core.helper",
-        target="app.core.main",
-        rel=RelType.TESTS,
-        metadata={"source": "manual"},
-    ))
+    graph.add_edge(
+        Edge(
+            source="app.core.helper",
+            target="app.core.main",
+            rel=RelType.TESTS,
+            metadata={"source": "manual"},
+        )
+    )
     save_graph(graph, root)
 
     # Rescan same files (no code change) — nodes still exist, edge not orphaned
     graph = load_graph(root)
-    stats = scan_paths(graph, root, [root / "src"], clean=True)
+    scan_paths(graph, root, [root / "src"], clean=True)
 
     # Both nodes still exist after rescan, so no orphans
     assert graph.get_node("app.core.helper") is not None
@@ -239,6 +245,7 @@ def test_stats_track_removals(tmp_path):
 @needs_tree_sitter
 def test_scan_changed_cli(tmp_path):
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = tmp_path
@@ -272,6 +279,7 @@ def test_scan_changed_cli(tmp_path):
 @needs_tree_sitter
 def test_scan_since_cli(tmp_path):
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = tmp_path
@@ -308,13 +316,18 @@ def test_scan_since_cli(tmp_path):
 @needs_tree_sitter
 def test_batch_sets_provenance(tmp_path):
     from click.testing import CliRunner
+
     from smg.cli import main
 
     os.chdir(tmp_path)
     runner = CliRunner()
     runner.invoke(main, ["init"])
 
-    commands = '{"op":"add","type":"module","name":"x"}\n{"op":"add","type":"module","name":"y"}\n{"op":"link","source":"x","rel":"imports","target":"y"}'
+    commands = (
+        '{"op":"add","type":"module","name":"x"}\n'
+        '{"op":"add","type":"module","name":"y"}\n'
+        '{"op":"link","source":"x","rel":"imports","target":"y"}'
+    )
     runner.invoke(main, ["batch"], input=commands)
 
     result = runner.invoke(main, ["show", "x"])

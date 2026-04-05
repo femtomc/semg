@@ -1,23 +1,21 @@
 """Tests for JavaScript and TypeScript extraction."""
-import json
-import os
-from pathlib import Path
 
 import pytest
 
-from smg.graph import SemGraph
 from smg.model import NodeType, RelType
 from smg.scan import file_to_module_name, scan_paths
 from smg.storage import init_project, load_graph
 
 try:
     import tree_sitter_javascript
+
     HAS_JS = True
 except ImportError:
     HAS_JS = False
 
 try:
     import tree_sitter_typescript
+
     HAS_TS = True
 except ImportError:
     HAS_TS = False
@@ -68,7 +66,7 @@ def _write_ts_project(tmp_path):
     app = root / "src" / "app"
     app.mkdir(parents=True)
     (app / "index.ts").write_text('export { Server } from "./server";\n')
-    (app / "server.ts").write_text('''\
+    (app / "server.ts").write_text("""\
 import { helper } from "./utils";
 
 interface Config {
@@ -91,8 +89,8 @@ export class Client extends Server {
     this.start();
   }
 }
-''')
-    (app / "utils.ts").write_text('''\
+""")
+    (app / "utils.ts").write_text("""\
 /** Format a name. */
 export function helper(): string {
   return formatName("test");
@@ -103,7 +101,7 @@ function formatName(name: string): string {
 }
 
 const MAX_RETRIES = 3;
-''')
+""")
     return root
 
 
@@ -294,7 +292,7 @@ def _write_js_project(tmp_path):
     lib = root / "src" / "lib"
     lib.mkdir(parents=True)
     (lib / "index.js").write_text('module.exports = require("./server");\n')
-    (lib / "server.js").write_text('''\
+    (lib / "server.js").write_text("""\
 class Server {
   constructor(port) {
     this.port = port;
@@ -310,7 +308,7 @@ function createServer(port) {
 }
 
 module.exports = { Server, createServer };
-''')
+""")
     return root
 
 

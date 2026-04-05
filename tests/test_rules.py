@@ -1,4 +1,5 @@
 """Tests for the architectural constraint system (rules + check)."""
+
 import json
 import os
 
@@ -15,7 +16,6 @@ from smg.rules import (
     check_rule,
     parse_deny_pattern,
 )
-
 
 # --- Pattern parsing ---
 
@@ -43,6 +43,7 @@ def test_parse_deny_pattern_with_spaces():
 
 def test_parse_deny_pattern_invalid():
     import pytest
+
     with pytest.raises(ValueError, match="invalid deny pattern"):
         parse_deny_pattern("not a pattern")
 
@@ -157,8 +158,12 @@ def test_check_invariant_no_dead_code():
     g.add_node(Node(name="orphan", type=NodeType.FUNCTION))
     g.add_node(Node(name="used", type=NodeType.FUNCTION))
     g.add_edge(Edge(source="main", target="used", rel=RelType.CALLS))
-    r = Rule(name="reachable", type="invariant", invariant="no-dead-code",
-             params={"entry_points": "main"})
+    r = Rule(
+        name="reachable",
+        type="invariant",
+        invariant="no-dead-code",
+        params={"entry_points": "main"},
+    )
     v = check_invariant(r, g)
     assert v is not None
     assert "orphan" in v.nodes
@@ -170,8 +175,12 @@ def test_check_invariant_no_dead_code_glob_entry():
     g.add_node(Node(name="cli.run", type=NodeType.FUNCTION))
     g.add_node(Node(name="cli.help", type=NodeType.FUNCTION))
     g.add_node(Node(name="orphan", type=NodeType.FUNCTION))
-    r = Rule(name="reachable", type="invariant", invariant="no-dead-code",
-             params={"entry_points": "cli.*"})
+    r = Rule(
+        name="reachable",
+        type="invariant",
+        invariant="no-dead-code",
+        params={"entry_points": "cli.*"},
+    )
     v = check_invariant(r, g)
     assert v is not None
     assert "orphan" in v.nodes
@@ -193,6 +202,7 @@ def test_check_invariant_no_layering_violations():
 
 def test_check_invariant_unknown():
     import pytest
+
     g = SemGraph()
     r = Rule(name="bad", type="invariant", invariant="no-such-thing")
     with pytest.raises(ValueError, match="unknown invariant"):

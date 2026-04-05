@@ -38,7 +38,20 @@ def test_add_and_list(tmp_path):
 
 def test_add_with_options(tmp_path):
     runner = _init_runner(tmp_path)
-    runner.invoke(main, ["add", "function", "main", "--file", "app.py", "--line", "1", "--doc", "entry"])
+    runner.invoke(
+        main,
+        [
+            "add",
+            "function",
+            "main",
+            "--file",
+            "app.py",
+            "--line",
+            "1",
+            "--doc",
+            "entry",
+        ],
+    )
     result = runner.invoke(main, ["show", "main"])
     data = json.loads(result.output)
     assert data["file"] == "app.py"

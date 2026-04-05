@@ -1,15 +1,18 @@
 """File watcher that auto-rescans changed files."""
+
 from __future__ import annotations
 
 import fnmatch
 import threading
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from smg.diff import diff_graphs
-from smg.langs import get_extractor, load_extractors
+from smg.langs import load_extractors
 from smg.scan import DEFAULT_EXCLUDES, _strip_extension, scan_paths
 from smg.storage import load_graph, save_graph
 
@@ -23,9 +26,9 @@ class _ScanHandler(FileSystemEventHandler):
         self._pending: set[Path] = set()
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
-        self._callback: callable | None = None
+        self._callback: Callable[..., Any] | None = None
 
-    def on_callback(self, callback: callable) -> None:
+    def on_callback(self, callback: Callable[..., Any]) -> None:
         self._callback = callback
 
     def _is_supported(self, path: str) -> bool:
@@ -40,20 +43,23 @@ class _ScanHandler(FileSystemEventHandler):
     def on_modified(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        if self._is_supported(event.src_path):
-            self._schedule(Path(event.src_path))
+        src = str(event.src_path)
+        if self._is_supported(src):
+            self._schedule(Path(src))
 
     def on_created(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        if self._is_supported(event.src_path):
-            self._schedule(Path(event.src_path))
+        src = str(event.src_path)
+        if self._is_supported(src):
+            self._schedule(Path(src))
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
-        if self._is_supported(event.src_path):
-            self._schedule(Path(event.src_path))
+        src = str(event.src_path)
+        if self._is_supported(src):
+            self._schedule(Path(src))
 
     def _schedule(self, path: Path) -> None:
         with self._lock:
@@ -76,7 +82,7 @@ class _ScanHandler(FileSystemEventHandler):
 def watch_and_scan(
     root: Path,
     paths: list[Path],
-    on_scan: callable | None = None,
+    on_scan: Callable[..., Any] | None = None,
     debounce: float = 0.5,
 ) -> None:
     """Watch paths for changes and rescan modified files.

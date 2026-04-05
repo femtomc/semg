@@ -1,8 +1,8 @@
 import json
 
+from smg import export
 from smg.graph import SemGraph
 from smg.model import Edge, Node, NodeType, RelType
-from smg import export
 
 
 def _sample_graph() -> SemGraph:

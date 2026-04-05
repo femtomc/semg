@@ -28,6 +28,7 @@ scan = [
 ]
 dev = [
     "hypothesis>=6.151.10",
+    "pyright>=1.1.408",
     "pytest>=8.0",
 ]
 
@@ -37,3 +38,26 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Availability-check imports (import X; HAS = True pattern)
+"tests/test_c.py" = ["F401"]
+"tests/test_javascript.py" = ["F401"]
+"tests/test_scan.py" = ["F401"]
+"tests/test_watch.py" = ["F401"]
+"tests/test_zig.py" = ["F401"]
+"tests/test_incremental.py" = ["F401"]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "standard"
+# Tighten these as the codebase gains null-safety:
+reportOptionalMemberAccess = "warning"

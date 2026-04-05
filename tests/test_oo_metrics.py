@@ -1,7 +1,17 @@
 """Tests for object-oriented and module-level metrics."""
+
 from smg.graph import SemGraph
 from smg.model import Edge, Node, NodeType, RelType
-from smg.oo_metrics import cbo, dit, lcom4, martin_metrics, noc, rfc, sdp_violations, wmc
+from smg.oo_metrics import (
+    cbo,
+    dit,
+    lcom4,
+    martin_metrics,
+    noc,
+    rfc,
+    sdp_violations,
+    wmc,
+)
 
 
 def _node(name: str, t: NodeType = NodeType.MODULE, **kwargs) -> Node:
@@ -38,9 +48,27 @@ def _build_class_graph() -> SemGraph:
     g.add_node(_node("module_a.ClassA", NodeType.CLASS))
     g.add_edge(_edge("module_a", "module_a.ClassA"))
 
-    g.add_node(_node("module_a.ClassA.method1", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 2}}))
-    g.add_node(_node("module_a.ClassA.method2", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 3}}))
-    g.add_node(_node("module_a.ClassA.method3", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 5}}))
+    g.add_node(
+        _node(
+            "module_a.ClassA.method1",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 2}},
+        )
+    )
+    g.add_node(
+        _node(
+            "module_a.ClassA.method2",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 3}},
+        )
+    )
+    g.add_node(
+        _node(
+            "module_a.ClassA.method3",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 5}},
+        )
+    )
     g.add_edge(_edge("module_a.ClassA", "module_a.ClassA.method1"))
     g.add_edge(_edge("module_a.ClassA", "module_a.ClassA.method2"))
     g.add_edge(_edge("module_a.ClassA", "module_a.ClassA.method3"))
@@ -49,23 +77,53 @@ def _build_class_graph() -> SemGraph:
     g.add_node(_node("module_a.ClassB", NodeType.CLASS))
     g.add_edge(_edge("module_a", "module_a.ClassB"))
 
-    g.add_node(_node("module_a.ClassB.helper", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 1}}))
-    g.add_node(_node("module_a.ClassB.util", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 1}}))
+    g.add_node(
+        _node(
+            "module_a.ClassB.helper",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 1}},
+        )
+    )
+    g.add_node(
+        _node(
+            "module_a.ClassB.util",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 1}},
+        )
+    )
     g.add_edge(_edge("module_a.ClassB", "module_a.ClassB.helper"))
     g.add_edge(_edge("module_a.ClassB", "module_a.ClassB.util"))
 
     # ClassA.method3 calls ClassB.helper (cross-class)
-    g.add_edge(Edge(source="module_a.ClassA.method3", target="module_a.ClassB.helper", rel=RelType.CALLS))
+    g.add_edge(
+        Edge(
+            source="module_a.ClassA.method3",
+            target="module_a.ClassB.helper",
+            rel=RelType.CALLS,
+        )
+    )
 
     # ClassB.util calls ClassB.helper (intra-class)
-    g.add_edge(Edge(source="module_a.ClassB.util", target="module_a.ClassB.helper", rel=RelType.CALLS))
+    g.add_edge(
+        Edge(
+            source="module_a.ClassB.util",
+            target="module_a.ClassB.helper",
+            rel=RelType.CALLS,
+        )
+    )
 
     # ClassC inherits ClassA (in module_b)
     g.add_node(_node("module_b.ClassC", NodeType.CLASS))
     g.add_edge(_edge("module_b", "module_b.ClassC"))
     g.add_edge(Edge(source="module_b.ClassC", target="module_a.ClassA", rel=RelType.INHERITS))
 
-    g.add_node(_node("module_b.ClassC.override1", NodeType.METHOD, metadata={"metrics": {"cyclomatic_complexity": 1}}))
+    g.add_node(
+        _node(
+            "module_b.ClassC.override1",
+            NodeType.METHOD,
+            metadata={"metrics": {"cyclomatic_complexity": 1}},
+        )
+    )
     g.add_edge(_edge("module_b.ClassC", "module_b.ClassC.override1"))
 
     # Module imports
@@ -81,8 +139,8 @@ def test_wmc():
     g = _build_class_graph()
     result = wmc(g)
     assert result["module_a.ClassA"] == 10  # 2+3+5
-    assert result["module_a.ClassB"] == 2   # 1+1
-    assert result["module_b.ClassC"] == 1   # 1
+    assert result["module_a.ClassB"] == 2  # 1+1
+    assert result["module_b.ClassC"] == 1  # 1
 
 
 def test_wmc_empty_class():
@@ -420,11 +478,13 @@ def test_sdp_detects_member_level_violation():
     g.add_edge(Edge(source="unstable_mod", target="dep3", rel=RelType.IMPORTS))
 
     # The violation: stable class method calls unstable class method (member-level)
-    g.add_edge(Edge(
-        source="stable_mod.StableClass.method",
-        target="unstable_mod.UnstableClass.do_thing",
-        rel=RelType.CALLS,
-    ))
+    g.add_edge(
+        Edge(
+            source="stable_mod.StableClass.method",
+            target="unstable_mod.UnstableClass.do_thing",
+            rel=RelType.CALLS,
+        )
+    )
 
     violations = sdp_violations(g)
     assert len(violations) >= 1

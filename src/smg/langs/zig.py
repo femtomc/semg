@@ -1,8 +1,10 @@
 """Zig language extractor."""
+
 from __future__ import annotations
 
 import tree_sitter_zig as tszig
-from tree_sitter import Language, Node as TSNode, Parser
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
@@ -13,26 +15,45 @@ _LANGUAGE = Language(tszig.language())
 _PARSER = Parser(_LANGUAGE)
 
 ZIG_BRANCH_MAP = BranchMap(
-    branch_nodes=frozenset({
-        "if_statement", "if_expression", "else_clause",
-        "for_statement", "while_statement", "while_expression",
-        "switch_expression", "switch_case",
-        "catch_expression", "try_expression",
-    }),
+    branch_nodes=frozenset(
+        {
+            "if_statement",
+            "if_expression",
+            "else_clause",
+            "for_statement",
+            "while_statement",
+            "while_expression",
+            "switch_expression",
+            "switch_case",
+            "catch_expression",
+            "try_expression",
+        }
+    ),
     boolean_operators=frozenset({"binary_expression"}),
-    nesting_nodes=frozenset({
-        "if_statement", "if_expression",
-        "for_statement", "while_statement", "while_expression",
-        "switch_expression",
-    }),
+    nesting_nodes=frozenset(
+        {
+            "if_statement",
+            "if_expression",
+            "for_statement",
+            "while_statement",
+            "while_expression",
+            "switch_expression",
+        }
+    ),
     loop_nodes=frozenset({"for_statement", "while_statement", "while_expression"}),
     function_nodes=frozenset({"function_declaration"}),
     logical_operator_tokens=frozenset({"and", "or"}),
 )
 
-_BUILTINS = frozenset({
-    "std", "print", "assert", "expect", "log",
-})
+_BUILTINS = frozenset(
+    {
+        "std",
+        "print",
+        "assert",
+        "expect",
+        "log",
+    }
+)
 
 
 class ZigExtractor:
@@ -88,14 +109,30 @@ class ZigExtractor:
         enum_node = _find_child(node, "enum_declaration")
         if enum_node is not None:
             qualified = f"{parent_name}.{var_name}"
-            nodes.append(Node(name=qualified, type=NodeType.TYPE, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
+            nodes.append(
+                Node(
+                    name=qualified,
+                    type=NodeType.TYPE,
+                    file=file_path,
+                    line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                )
+            )
             edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
             return
 
         # UPPER_CASE = constant
         if var_name.isupper() or (var_name[0].isupper() and "_" in var_name and var_name == var_name.upper()):
             qualified = f"{parent_name}.{var_name}"
-            nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
+            nodes.append(
+                Node(
+                    name=qualified,
+                    type=NodeType.CONSTANT,
+                    file=file_path,
+                    line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                )
+            )
             edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_struct(
@@ -109,17 +146,19 @@ class ZigExtractor:
         edges: list[Edge],
     ) -> None:
         qualified = f"{parent_name}.{struct_name}"
-        nodes.append(Node(
-            name=qualified,
-            type=NodeType.CLASS,  # Zig structs map to class in smg
-            file=file_path,
-            line=struct_node.start_point[0] + 1,
-            end_line=struct_node.end_point[0] + 1,
-            metadata={
-                "content_hash": content_hash(source, struct_node.start_byte, struct_node.end_byte),
-                "structure_hash": structure_hash(struct_node),
-            },
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,  # Zig structs map to class in smg
+                file=file_path,
+                line=struct_node.start_point[0] + 1,
+                end_line=struct_node.end_point[0] + 1,
+                metadata={
+                    "content_hash": content_hash(source, struct_node.start_byte, struct_node.end_byte),
+                    "structure_hash": structure_hash(struct_node),
+                },
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Walk struct body for methods and fields
@@ -150,18 +189,20 @@ class ZigExtractor:
 
         meta = compute_metrics_and_hash(node, self.branch_map)
 
-        nodes.append(Node(
-            name=qualified,
-            type=NodeType.METHOD if is_method else NodeType.FUNCTION,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            metadata={
-                "metrics": meta.metrics.to_dict(),
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": meta.structure_hash,
-            },
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.METHOD if is_method else NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "metrics": meta.metrics.to_dict(),
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": meta.structure_hash,
+                },
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Extract calls from function body
@@ -188,14 +229,16 @@ class ZigExtractor:
         test_name = content.text.decode().replace(" ", "_")
         qualified = f"{module_name}.test_{test_name}"
 
-        nodes.append(Node(
-            name=qualified,
-            type=NodeType.FUNCTION,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            metadata={"test": True},
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={"test": True},
+            )
+        )
         edges.append(Edge(source=module_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_imports(
@@ -218,12 +261,14 @@ class ZigExtractor:
                         content = _find_child(string_node, "string_content")
                         if content is not None:
                             target = content.text.decode()
-                            edges.append(Edge(
-                                source=module_name,
-                                target=target,
-                                rel=RelType.IMPORTS,
-                                metadata={"unresolved": True},
-                            ))
+                            edges.append(
+                                Edge(
+                                    source=module_name,
+                                    target=target,
+                                    rel=RelType.IMPORTS,
+                                    metadata={"unresolved": True},
+                                )
+                            )
                 return
         for child in node.children:
             # Only scan top-level variable declarations for imports
@@ -244,12 +289,14 @@ class ZigExtractor:
                 target = self._call_target(node, struct_name)
                 if target is not None:
                     name, resolved = target
-                    edges.append(Edge(
-                        source=caller_name,
-                        target=name,
-                        rel=RelType.CALLS,
-                        metadata={} if resolved else {"unresolved": True},
-                    ))
+                    edges.append(
+                        Edge(
+                            source=caller_name,
+                            target=name,
+                            rel=RelType.CALLS,
+                            metadata={} if resolved else {"unresolved": True},
+                        )
+                    )
             for child in node.children:
                 if child.type != "function_declaration":
                     stack.append(child)

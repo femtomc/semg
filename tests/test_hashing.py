@@ -1,4 +1,5 @@
 """Tests for structural and content hashing."""
+
 from __future__ import annotations
 
 import tree_sitter_python as tspython

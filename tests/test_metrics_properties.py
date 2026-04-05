@@ -4,10 +4,11 @@ These tests verify invariants that must hold for ANY valid graph,
 not just hand-crafted examples. They catch edge cases and corner
 cases that example-based tests miss.
 """
+
 from __future__ import annotations
 
 import hypothesis.strategies as st
-from hypothesis import given, settings, assume
+from hypothesis import given, settings
 
 from smg.graph import SemGraph
 from smg.graph_metrics import (
@@ -26,25 +27,30 @@ from smg.graph_metrics import (
 )
 from smg.model import Edge, Node, NodeType, RelType
 from smg.oo_metrics import (
-    cbo, dit, feature_envy, god_classes, lcom4, martin_metrics,
-    noc, rfc, sdp_violations, shotgun_surgery, wmc,
+    cbo,
+    dit,
+    feature_envy,
+    god_classes,
+    lcom4,
+    martin_metrics,
+    noc,
+    rfc,
+    sdp_violations,
+    shotgun_surgery,
+    wmc,
 )
 from smg.rules import (
     Rule,
     check_all,
     check_deny,
     check_invariant,
-    check_rule,
     parse_deny_pattern,
 )
-
 
 # --- Strategies for generating random graphs ---
 
 
-node_names = st.text(
-    alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=4
-).map(lambda s: f"mod.{s}")
+node_names = st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=4).map(lambda s: f"mod.{s}")
 
 node_types = st.sampled_from([NodeType.MODULE, NodeType.CLASS, NodeType.FUNCTION, NodeType.METHOD])
 
@@ -94,10 +100,13 @@ def random_class_graph(draw, min_classes=1, max_classes=5, max_methods_per_class
         for mi in range(n_methods):
             mname = f"{cname}.m{mi}"
             cc = draw(st.integers(min_value=1, max_value=20))
-            g.add_node(Node(
-                name=mname, type=NodeType.METHOD,
-                metadata={"metrics": {"cyclomatic_complexity": cc}},
-            ))
+            g.add_node(
+                Node(
+                    name=mname,
+                    type=NodeType.METHOD,
+                    metadata={"metrics": {"cyclomatic_complexity": cc}},
+                )
+            )
             g.add_edge(Edge(source=cname, target=mname, rel=RelType.CONTAINS))
             class_methods.append(mname)
             all_methods.append(mname)
@@ -153,10 +162,12 @@ def random_module_graph(draw, min_modules=2, max_modules=8):
         for ci in range(n_classes):
             is_interface = draw(st.booleans())
             cname = f"{name}.C{ci}"
-            g.add_node(Node(
-                name=cname,
-                type=NodeType.INTERFACE if is_interface else NodeType.CLASS,
-            ))
+            g.add_node(
+                Node(
+                    name=cname,
+                    type=NodeType.INTERFACE if is_interface else NodeType.CLASS,
+                )
+            )
             g.add_edge(Edge(source=name, target=cname, rel=RelType.CONTAINS))
 
     # Random imports between modules
@@ -220,12 +231,11 @@ class TestCycleProperties:
         for i in range(10):
             g.add_node(Node(name=f"n{i}", type=NodeType.MODULE))
         for i in range(9):
-            g.add_edge(Edge(source=f"n{i}", target=f"n{i+1}", rel=RelType.IMPORTS))
+            g.add_edge(Edge(source=f"n{i}", target=f"n{i + 1}", rel=RelType.IMPORTS))
         assert find_cycles(g) == []
 
 
 class TestTopologicalLayerProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_layers_are_non_negative(self, g: SemGraph):
@@ -240,13 +250,18 @@ class TestTopologicalLayerProperties:
         layers = topological_layers(g)
         # Nodes only in contains edges may not appear
         for edge in g.all_edges():
-            if edge.rel.value in ("calls", "imports", "inherits", "implements", "depends_on"):
+            if edge.rel.value in (
+                "calls",
+                "imports",
+                "inherits",
+                "implements",
+                "depends_on",
+            ):
                 assert edge.source in layers
                 assert edge.target in layers
 
 
 class TestPageRankProperties:
-
     @given(random_graph(min_nodes=3))
     @settings(max_examples=100)
     def test_pagerank_values_are_positive(self, g: SemGraph):
@@ -267,13 +282,18 @@ class TestPageRankProperties:
     def test_pagerank_covers_all_coupling_nodes(self, g: SemGraph):
         ranks = pagerank(g)
         for edge in g.all_edges():
-            if edge.rel.value in ("calls", "imports", "inherits", "implements", "depends_on"):
+            if edge.rel.value in (
+                "calls",
+                "imports",
+                "inherits",
+                "implements",
+                "depends_on",
+            ):
                 assert edge.source in ranks
                 assert edge.target in ranks
 
 
 class TestBetweennessProperties:
-
     @given(random_graph(min_nodes=3))
     @settings(max_examples=100)
     def test_betweenness_values_in_range(self, g: SemGraph):
@@ -289,7 +309,13 @@ class TestBetweennessProperties:
         for name, centrality in bc.items():
             neighbors = set()
             for edge in g.all_edges():
-                if edge.rel.value in ("calls", "imports", "inherits", "implements", "depends_on"):
+                if edge.rel.value in (
+                    "calls",
+                    "imports",
+                    "inherits",
+                    "implements",
+                    "depends_on",
+                ):
                     if edge.source == name:
                         neighbors.add(edge.target)
                     if edge.target == name:
@@ -301,7 +327,6 @@ class TestBetweennessProperties:
 
 
 class TestKCoreProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_coreness_is_non_negative(self, g: SemGraph):
@@ -317,14 +342,19 @@ class TestKCoreProperties:
         for name, coreness in kc.items():
             degree = 0
             for edge in g.all_edges():
-                if edge.rel.value in ("calls", "imports", "inherits", "implements", "depends_on"):
+                if edge.rel.value in (
+                    "calls",
+                    "imports",
+                    "inherits",
+                    "implements",
+                    "depends_on",
+                ):
                     if edge.source == name or edge.target == name:
                         degree += 1
             assert coreness <= degree, f"{name}: coreness {coreness} > degree {degree}"
 
 
 class TestBridgeProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_bridges_are_valid_edges(self, g: SemGraph):
@@ -348,7 +378,6 @@ class TestBridgeProperties:
 
 
 class TestWMCProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_wmc_is_non_negative(self, g: SemGraph):
@@ -363,14 +392,14 @@ class TestWMCProperties:
         result = wmc(g)
         for name in result:
             methods = [
-                e.target for e in g.outgoing(name, rel=RelType.CONTAINS)
+                e.target
+                for e in g.outgoing(name, rel=RelType.CONTAINS)
                 if g.get_node(e.target) and g.get_node(e.target).type.value in ("function", "method")
             ]
             assert result[name] >= len(methods)
 
 
 class TestDITProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_dit_is_non_negative(self, g: SemGraph):
@@ -387,13 +416,11 @@ class TestDITProperties:
                 parents = [e.target for e in g.outgoing(name, rel=RelType.INHERITS)]
                 # Either no parents, or parents are not in the graph as classes
                 assert len(parents) == 0 or all(
-                    g.get_node(p) is None or g.get_node(p).type != NodeType.CLASS
-                    for p in parents
+                    g.get_node(p) is None or g.get_node(p).type != NodeType.CLASS for p in parents
                 )
 
 
 class TestNOCProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_noc_is_non_negative(self, g: SemGraph):
@@ -403,7 +430,6 @@ class TestNOCProperties:
 
 
 class TestCBOProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_cbo_is_non_negative(self, g: SemGraph):
@@ -421,7 +447,6 @@ class TestCBOProperties:
 
 
 class TestRFCProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_rfc_ge_method_count(self, g: SemGraph):
@@ -429,14 +454,14 @@ class TestRFCProperties:
         result = rfc(g)
         for name in result:
             methods = [
-                e.target for e in g.outgoing(name, rel=RelType.CONTAINS)
+                e.target
+                for e in g.outgoing(name, rel=RelType.CONTAINS)
                 if g.get_node(e.target) and g.get_node(e.target).type.value in ("function", "method")
             ]
             assert result[name] >= len(methods)
 
 
 class TestLCOM4Properties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_lcom4_bounded_by_method_count(self, g: SemGraph):
@@ -444,7 +469,8 @@ class TestLCOM4Properties:
         result = lcom4(g)
         for name in result:
             methods = [
-                e.target for e in g.outgoing(name, rel=RelType.CONTAINS)
+                e.target
+                for e in g.outgoing(name, rel=RelType.CONTAINS)
                 if g.get_node(e.target) and g.get_node(e.target).type.value in ("function", "method")
             ]
             assert result[name] <= max(len(methods), 1)
@@ -463,7 +489,6 @@ class TestLCOM4Properties:
 
 
 class TestMartinMetricsProperties:
-
     @given(random_module_graph())
     @settings(max_examples=100)
     def test_instability_in_range(self, g: SemGraph):
@@ -517,7 +542,6 @@ class TestMartinMetricsProperties:
 
 
 class TestSDPViolationProperties:
-
     @given(random_module_graph())
     @settings(max_examples=100)
     def test_violations_have_correct_direction(self, g: SemGraph):
@@ -542,7 +566,6 @@ class TestSDPViolationProperties:
 
 
 class TestHITSProperties:
-
     @given(random_graph(min_nodes=3))
     @settings(max_examples=100)
     def test_hits_scores_non_negative(self, g: SemGraph):
@@ -597,7 +620,6 @@ class TestHITSProperties:
 
 
 class TestGodFileProperties:
-
     @st.composite
     @staticmethod
     def _graph_with_files(draw, min_files=2, max_files=5, max_funcs_per_file=10):
@@ -614,10 +636,14 @@ class TestGodFileProperties:
             for fj in range(n_funcs):
                 fname = f"{mod_name}.f{fj}"
                 cc = draw(st.integers(min_value=1, max_value=20))
-                g.add_node(Node(
-                    name=fname, type=NodeType.FUNCTION, file=fpath,
-                    metadata={"metrics": {"cyclomatic_complexity": cc}},
-                ))
+                g.add_node(
+                    Node(
+                        name=fname,
+                        type=NodeType.FUNCTION,
+                        file=fpath,
+                        metadata={"metrics": {"cyclomatic_complexity": cc}},
+                    )
+                )
                 g.add_edge(Edge(source=mod_name, target=fname, rel=RelType.CONTAINS))
                 all_funcs.append(fname)
 
@@ -668,10 +694,14 @@ class TestGodFileProperties:
         g = SemGraph()
         g.add_node(Node(name="mod", type=NodeType.MODULE, file="big.py"))
         for i in range(20):
-            g.add_node(Node(
-                name=f"mod.f{i}", type=NodeType.FUNCTION, file="big.py",
-                metadata={"metrics": {"cyclomatic_complexity": 5}},
-            ))
+            g.add_node(
+                Node(
+                    name=f"mod.f{i}",
+                    type=NodeType.FUNCTION,
+                    file="big.py",
+                    metadata={"metrics": {"cyclomatic_complexity": 5}},
+                )
+            )
             g.add_edge(Edge(source="mod", target=f"mod.f{i}", rel=RelType.CONTAINS))
         results = god_files(g)
         assert len(results) == 1
@@ -684,17 +714,20 @@ class TestGodFileProperties:
         g = SemGraph()
         g.add_node(Node(name="mod", type=NodeType.MODULE, file="small.py"))
         for i in range(3):
-            g.add_node(Node(
-                name=f"mod.f{i}", type=NodeType.FUNCTION, file="small.py",
-                metadata={"metrics": {"cyclomatic_complexity": 2}},
-            ))
+            g.add_node(
+                Node(
+                    name=f"mod.f{i}",
+                    type=NodeType.FUNCTION,
+                    file="small.py",
+                    metadata={"metrics": {"cyclomatic_complexity": 2}},
+                )
+            )
             g.add_edge(Edge(source="mod", target=f"mod.f{i}", rel=RelType.CONTAINS))
         results = god_files(g)
         assert len(results) == 0
 
 
 class TestMinimalCycleProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_minimal_cycle_is_subset_of_scc(self, g: SemGraph):
@@ -729,8 +762,7 @@ class TestMinimalCycleProperties:
                 src = mc[i]
                 tgt = mc[(i + 1) % len(mc)]
                 has_edge = any(
-                    e.source == src and e.target == tgt and e.rel.value in coupling_rels
-                    for e in g.all_edges()
+                    e.source == src and e.target == tgt and e.rel.value in coupling_rels for e in g.all_edges()
                 )
                 assert has_edge, f"no coupling edge {src} -> {tgt}"
 
@@ -759,7 +791,6 @@ class TestMinimalCycleProperties:
 
 
 class TestFanInOutProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_fan_in_out_non_negative(self, g: SemGraph):
@@ -828,7 +859,6 @@ class TestFanInOutProperties:
 
 
 class TestDeadCodeProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_dead_nodes_have_no_incoming_coupling(self, g: SemGraph):
@@ -836,10 +866,7 @@ class TestDeadCodeProperties:
         dead = dead_code(g)
         coupling_rels = {"calls", "imports", "inherits", "implements", "depends_on"}
         for name in dead:
-            incoming = [
-                e for e in g.all_edges()
-                if e.target == name and e.rel.value in coupling_rels
-            ]
+            incoming = [e for e in g.all_edges() if e.target == name and e.rel.value in coupling_rels]
             assert len(incoming) == 0, f"{name} has incoming: {incoming}"
 
     @given(random_graph())
@@ -904,7 +931,6 @@ class TestDeadCodeProperties:
 
 
 class TestLayeringViolationProperties:
-
     @given(random_graph())
     @settings(max_examples=100)
     def test_violations_reference_existing_nodes(self, g: SemGraph):
@@ -939,7 +965,7 @@ class TestLayeringViolationProperties:
         for i in range(5):
             g.add_node(Node(name=f"n{i}", type=NodeType.MODULE))
         for i in range(4):
-            g.add_edge(Edge(source=f"n{i}", target=f"n{i+1}", rel=RelType.IMPORTS))
+            g.add_edge(Edge(source=f"n{i}", target=f"n{i + 1}", rel=RelType.IMPORTS))
         assert layering_violations(g) == []
 
     def test_cycle_produces_violations(self):
@@ -975,7 +1001,6 @@ class TestLayeringViolationProperties:
 
 
 class TestGodClassProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_god_classes_satisfy_all_thresholds(self, g: SemGraph):
@@ -1015,8 +1040,13 @@ class TestGodClassProperties:
         # Create 25 methods with CC=1 each -> WMC=25
         for i in range(25):
             mname = f"mod.God.m{i}"
-            g.add_node(Node(name=mname, type=NodeType.METHOD,
-                            metadata={"metrics": {"cyclomatic_complexity": 1}}))
+            g.add_node(
+                Node(
+                    name=mname,
+                    type=NodeType.METHOD,
+                    metadata={"metrics": {"cyclomatic_complexity": 1}},
+                )
+            )
             g.add_edge(Edge(source="mod.God", target=mname, rel=RelType.CONTAINS))
 
         # Create 6 external classes for CBO >= 5
@@ -1037,7 +1067,6 @@ class TestGodClassProperties:
 
 
 class TestFeatureEnvyProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_envied_refs_exceed_own_refs(self, g: SemGraph):
@@ -1094,7 +1123,6 @@ class TestFeatureEnvyProperties:
 
 
 class TestShotgunSurgeryProperties:
-
     @given(random_class_graph())
     @settings(max_examples=100)
     def test_shotgun_surgery_fan_out_meets_threshold(self, g: SemGraph):
@@ -1193,7 +1221,6 @@ def random_invariant_rule(draw):
 
 
 class TestDenyRuleProperties:
-
     @given(random_graph(), random_deny_rule())
     @settings(max_examples=100)
     def test_deny_violations_are_real_edges(self, g: SemGraph, rule: Rule):
@@ -1209,6 +1236,7 @@ class TestDenyRuleProperties:
     def test_deny_violations_match_pattern(self, g: SemGraph, rule: Rule):
         """Every violating edge must match the deny pattern."""
         import fnmatch
+
         v = check_deny(rule, g)
         if v is not None:
             src_glob, rel_filter, tgt_glob = parse_deny_pattern(rule.pattern)
@@ -1223,6 +1251,7 @@ class TestDenyRuleProperties:
     def test_deny_no_false_negatives(self, g: SemGraph, rule: Rule):
         """If check_deny returns None, no edge in the graph matches the pattern."""
         import fnmatch
+
         v = check_deny(rule, g)
         if v is None:
             src_glob, rel_filter, tgt_glob = parse_deny_pattern(rule.pattern)
@@ -1233,9 +1262,10 @@ class TestDenyRuleProperties:
                         continue
                 elif edge.rel.value not in coupling_rels:
                     continue
-                matches = (fnmatch.fnmatch(edge.source, src_glob)
-                           and fnmatch.fnmatch(edge.target, tgt_glob))
-                assert not matches, f"edge {edge.source} --{edge.rel.value}--> {edge.target} matches but was not reported"
+                matches = fnmatch.fnmatch(edge.source, src_glob) and fnmatch.fnmatch(edge.target, tgt_glob)
+                assert not matches, (
+                    f"edge {edge.source} --{edge.rel.value}--> {edge.target} matches but was not reported"
+                )
 
     @given(random_graph())
     @settings(max_examples=100)
@@ -1253,7 +1283,6 @@ class TestDenyRuleProperties:
 
 
 class TestInvariantRuleProperties:
-
     @given(random_graph(), random_invariant_rule())
     @settings(max_examples=100)
     def test_invariant_never_crashes(self, g: SemGraph, rule: Rule):
@@ -1306,7 +1335,6 @@ class TestInvariantRuleProperties:
 
 
 class TestCheckAllProperties:
-
     @given(random_graph(), st.lists(random_deny_rule(), min_size=0, max_size=5))
     @settings(max_examples=100)
     def test_check_all_violations_subset_of_rules(self, g: SemGraph, rules: list[Rule]):
@@ -1331,7 +1359,6 @@ class TestCheckAllProperties:
 
 
 class TestRuleSerializationProperties:
-
     @given(random_deny_rule())
     @settings(max_examples=100)
     def test_deny_rule_round_trip(self, rule: Rule):

@@ -1,4 +1,5 @@
 """Tests for LLM context budgeting."""
+
 from __future__ import annotations
 
 import tempfile
@@ -29,10 +30,42 @@ def _make_graph_with_source() -> tuple[SemGraph, Path]:
     )
 
     graph = SemGraph()
-    graph.add_node(Node(name="app.target_func", type=NodeType.FUNCTION, file="src/app.py", line=1, end_line=2))
-    graph.add_node(Node(name="app.helper", type=NodeType.FUNCTION, file="src/app.py", line=4, end_line=5))
-    graph.add_node(Node(name="app.MyClass", type=NodeType.CLASS, file="src/app.py", line=7, end_line=9))
-    graph.add_node(Node(name="app.MyClass.method", type=NodeType.METHOD, file="src/app.py", line=8, end_line=9))
+    graph.add_node(
+        Node(
+            name="app.target_func",
+            type=NodeType.FUNCTION,
+            file="src/app.py",
+            line=1,
+            end_line=2,
+        )
+    )
+    graph.add_node(
+        Node(
+            name="app.helper",
+            type=NodeType.FUNCTION,
+            file="src/app.py",
+            line=4,
+            end_line=5,
+        )
+    )
+    graph.add_node(
+        Node(
+            name="app.MyClass",
+            type=NodeType.CLASS,
+            file="src/app.py",
+            line=7,
+            end_line=9,
+        )
+    )
+    graph.add_node(
+        Node(
+            name="app.MyClass.method",
+            type=NodeType.METHOD,
+            file="src/app.py",
+            line=8,
+            end_line=9,
+        )
+    )
 
     # target_func calls helper
     graph.add_edge(Edge(source="app.target_func", target="app.helper", rel=RelType.CALLS))
@@ -98,7 +131,13 @@ def test_default_token_count():
 
 
 def test_summary_format():
-    node = Node(name="app.foo", type=NodeType.FUNCTION, file="src/app.py", line=10, docstring="Does things")
+    node = Node(
+        name="app.foo",
+        type=NodeType.FUNCTION,
+        file="src/app.py",
+        line=10,
+        docstring="Does things",
+    )
     s = _summary(node)
     assert "app.foo" in s
     assert "function" in s
@@ -117,6 +156,12 @@ def test_json_output_structure():
     for entry in result.entries:
         assert entry.name
         assert entry.node_type
-        assert entry.relation in ("target", "direct_dep", "direct_dependent", "2hop", "3hop")
+        assert entry.relation in (
+            "target",
+            "direct_dep",
+            "direct_dependent",
+            "2hop",
+            "3hop",
+        )
         assert entry.level in ("full", "signature", "summary")
         assert isinstance(entry.tokens, int)

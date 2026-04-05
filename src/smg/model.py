@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -20,11 +20,12 @@ class NodeType(str, Enum):
     CONFIG = "config"
 
     @classmethod
-    def _missing_(cls, value: str) -> NodeType | None:
+    def _missing_(cls, value: object) -> NodeType | None:
         # Escape hatch: accept any string as a custom node type
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        obj._name_ = value.upper()
+        v = str(value)
+        obj = str.__new__(cls, v)
+        obj._value_ = v
+        obj._name_ = v.upper()
         return obj
 
 
@@ -42,10 +43,11 @@ class RelType(str, Enum):
     TESTS = "tests"
 
     @classmethod
-    def _missing_(cls, value: str) -> RelType | None:
-        obj = str.__new__(cls, value)
-        obj._value_ = value
-        obj._name_ = value.upper()
+    def _missing_(cls, value: object) -> RelType | None:
+        v = str(value)
+        obj = str.__new__(cls, v)
+        obj._value_ = v
+        obj._name_ = v.upper()
         return obj
 
 

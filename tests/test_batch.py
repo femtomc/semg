@@ -1,4 +1,5 @@
 """Tests for batch command."""
+
 import json
 import os
 
@@ -16,10 +17,12 @@ def _init_runner(tmp_path):
 
 def test_batch_add(tmp_path):
     runner = _init_runner(tmp_path)
-    commands = '\n'.join([
-        '{"op":"add","type":"module","name":"app"}',
-        '{"op":"add","type":"function","name":"app.main","file":"app.py","line":1}',
-    ])
+    commands = "\n".join(
+        [
+            '{"op":"add","type":"module","name":"app"}',
+            '{"op":"add","type":"function","name":"app.main","file":"app.py","line":1}',
+        ]
+    )
     result = runner.invoke(main, ["batch"], input=commands)
     assert result.exit_code == 0
     data = json.loads(result.output)
@@ -35,11 +38,13 @@ def test_batch_add(tmp_path):
 
 def test_batch_link(tmp_path):
     runner = _init_runner(tmp_path)
-    commands = '\n'.join([
-        '{"op":"add","type":"module","name":"a"}',
-        '{"op":"add","type":"module","name":"b"}',
-        '{"op":"link","source":"a","rel":"imports","target":"b"}',
-    ])
+    commands = "\n".join(
+        [
+            '{"op":"add","type":"module","name":"a"}',
+            '{"op":"add","type":"module","name":"b"}',
+            '{"op":"link","source":"a","rel":"imports","target":"b"}',
+        ]
+    )
     result = runner.invoke(main, ["batch"], input=commands)
     data = json.loads(result.output)
     assert data["ok"] == 3
@@ -52,11 +57,13 @@ def test_batch_link(tmp_path):
 
 def test_batch_rm(tmp_path):
     runner = _init_runner(tmp_path)
-    setup = '\n'.join([
-        '{"op":"add","type":"module","name":"app"}',
-        '{"op":"add","type":"function","name":"app.main"}',
-        '{"op":"link","source":"app","rel":"contains","target":"app.main"}',
-    ])
+    setup = "\n".join(
+        [
+            '{"op":"add","type":"module","name":"app"}',
+            '{"op":"add","type":"function","name":"app.main"}',
+            '{"op":"link","source":"app","rel":"contains","target":"app.main"}',
+        ]
+    )
     runner.invoke(main, ["batch"], input=setup)
 
     result = runner.invoke(main, ["batch"], input='{"op":"rm","name":"app.main"}')
@@ -71,14 +78,20 @@ def test_batch_rm(tmp_path):
 
 def test_batch_unlink(tmp_path):
     runner = _init_runner(tmp_path)
-    setup = '\n'.join([
-        '{"op":"add","type":"module","name":"a"}',
-        '{"op":"add","type":"module","name":"b"}',
-        '{"op":"link","source":"a","rel":"imports","target":"b"}',
-    ])
+    setup = "\n".join(
+        [
+            '{"op":"add","type":"module","name":"a"}',
+            '{"op":"add","type":"module","name":"b"}',
+            '{"op":"link","source":"a","rel":"imports","target":"b"}',
+        ]
+    )
     runner.invoke(main, ["batch"], input=setup)
 
-    result = runner.invoke(main, ["batch"], input='{"op":"unlink","source":"a","rel":"imports","target":"b"}')
+    result = runner.invoke(
+        main,
+        ["batch"],
+        input='{"op":"unlink","source":"a","rel":"imports","target":"b"}',
+    )
     data = json.loads(result.output)
     assert data["ok"] == 1
 
@@ -87,7 +100,11 @@ def test_batch_update(tmp_path):
     runner = _init_runner(tmp_path)
     runner.invoke(main, ["batch"], input='{"op":"add","type":"module","name":"app"}')
 
-    result = runner.invoke(main, ["batch"], input='{"op":"update","name":"app","type":"package","doc":"My app","metadata":{"version":"1.0"}}')
+    result = runner.invoke(
+        main,
+        ["batch"],
+        input='{"op":"update","name":"app","type":"package","doc":"My app","metadata":{"version":"1.0"}}',
+    )
     data = json.loads(result.output)
     assert data["ok"] == 1
 
@@ -100,7 +117,7 @@ def test_batch_update(tmp_path):
 
 def test_batch_error_invalid_json(tmp_path):
     runner = _init_runner(tmp_path)
-    result = runner.invoke(main, ["batch"], input='not json at all')
+    result = runner.invoke(main, ["batch"], input="not json at all")
     data = json.loads(result.output)
     assert data["errors"] == 1
     assert "invalid JSON" in data["ops"][0]["error"]
@@ -123,11 +140,13 @@ def test_batch_error_missing_node(tmp_path):
 
 def test_batch_mixed_success_and_errors(tmp_path):
     runner = _init_runner(tmp_path)
-    commands = '\n'.join([
-        '{"op":"add","type":"module","name":"app"}',
-        '{"op":"link","source":"app","rel":"calls","target":"nonexistent"}',
-        '{"op":"add","type":"function","name":"app.main"}',
-    ])
+    commands = "\n".join(
+        [
+            '{"op":"add","type":"module","name":"app"}',
+            '{"op":"link","source":"app","rel":"calls","target":"nonexistent"}',
+            '{"op":"add","type":"function","name":"app.main"}',
+        ]
+    )
     result = runner.invoke(main, ["batch"], input=commands)
     data = json.loads(result.output)
     assert data["ok"] == 2
@@ -136,7 +155,7 @@ def test_batch_mixed_success_and_errors(tmp_path):
 
 def test_batch_empty_input(tmp_path):
     runner = _init_runner(tmp_path)
-    result = runner.invoke(main, ["batch"], input='')
+    result = runner.invoke(main, ["batch"], input="")
     data = json.loads(result.output)
     assert data["ok"] == 0
     assert data["errors"] == 0

@@ -3,11 +3,12 @@
 Maps git commit hunks to graph entities by file+line overlap.
 Computes per-entity churn counts without rebuilding graphs.
 """
+
 from __future__ import annotations
 
 import subprocess
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from smg.graph import SemGraph
@@ -129,12 +130,14 @@ def _parse_unified_diff(output: str) -> list[_Hunk]:
                 new_range = parts[2]
                 start, count = _parse_range(new_range.lstrip("+"))
                 if start > 0:
-                    hunks.append(_Hunk(
-                        commit=current_commit,
-                        file=current_file,
-                        start_line=start,
-                        end_line=start + max(count - 1, 0),
-                    ))
+                    hunks.append(
+                        _Hunk(
+                            commit=current_commit,
+                            file=current_file,
+                            start_line=start,
+                            end_line=start + max(count - 1, 0),
+                        )
+                    )
 
     return hunks
 

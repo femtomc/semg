@@ -8,12 +8,13 @@ fuses the structure hash walk with the metrics walk in a single pass.
 This module's structure_hash() is for non-function entities (classes, structs)
 that don't need metrics.
 """
+
 from __future__ import annotations
 
 import xxhash
 from tree_sitter import Node as TSNode
 
-from smg.metrics import _HASH_SKIP, _HASH_NORMALIZE
+from smg.metrics import _HASH_NORMALIZE, _HASH_SKIP
 
 
 def content_hash(source: bytes, start_byte: int, end_byte: int) -> str:

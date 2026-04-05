@@ -1,4 +1,5 @@
 """LLM context budgeting: pack source code from graph neighbors into a token budget."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -61,11 +62,18 @@ def build_context(
     # Tier 1: target full source (always)
     target_content = _read_full_source(target_node, root) or _summary(target_node)
     target_tokens = count_fn(target_content)
-    entries.append(ContextEntry(
-        name=name, node_type=target_node.type.value, relation="target",
-        level="full", content=target_content, tokens=target_tokens,
-        file=target_node.file, line=target_node.line,
-    ))
+    entries.append(
+        ContextEntry(
+            name=name,
+            node_type=target_node.type.value,
+            relation="target",
+            level="full",
+            content=target_content,
+            tokens=target_tokens,
+            file=target_node.file,
+            line=target_node.line,
+        )
+    )
     used += target_tokens
     seen.add(name)
 
@@ -91,11 +99,18 @@ def build_context(
             truncated = True
             continue
 
-        entries.append(ContextEntry(
-            name=neighbor_name, node_type=node.type.value, relation=relation,
-            level=level, content=content, tokens=tokens,
-            file=node.file, line=node.line,
-        ))
+        entries.append(
+            ContextEntry(
+                name=neighbor_name,
+                node_type=node.type.value,
+                relation=relation,
+                level=level,
+                content=content,
+                tokens=tokens,
+                file=node.file,
+                line=node.line,
+            )
+        )
         used += tokens
 
     # Tier 3: 2-hop — signatures
@@ -116,11 +131,18 @@ def build_context(
         if used + tokens > budget:
             truncated = True
             continue
-        entries.append(ContextEntry(
-            name=neighbor_name, node_type=node.type.value, relation="2hop",
-            level=level, content=content, tokens=tokens,
-            file=node.file, line=node.line,
-        ))
+        entries.append(
+            ContextEntry(
+                name=neighbor_name,
+                node_type=node.type.value,
+                relation="2hop",
+                level=level,
+                content=content,
+                tokens=tokens,
+                file=node.file,
+                line=node.line,
+            )
+        )
         used += tokens
 
     # Tier 4: 3-hop — summaries only
@@ -138,16 +160,26 @@ def build_context(
         if used + tokens > budget:
             truncated = True
             continue
-        entries.append(ContextEntry(
-            name=neighbor_name, node_type=node.type.value, relation="3hop",
-            level="summary", content=content, tokens=tokens,
-            file=node.file, line=node.line,
-        ))
+        entries.append(
+            ContextEntry(
+                name=neighbor_name,
+                node_type=node.type.value,
+                relation="3hop",
+                level="summary",
+                content=content,
+                tokens=tokens,
+                file=node.file,
+                line=node.line,
+            )
+        )
         used += tokens
 
     return ContextResult(
-        target=name, entries=entries, total_tokens=used,
-        budget=budget, truncated=truncated,
+        target=name,
+        entries=entries,
+        total_tokens=used,
+        budget=budget,
+        truncated=truncated,
     )
 
 
@@ -212,7 +244,11 @@ def _summary(node: Node) -> str:
 
 
 def _best_fit(
-    node: Node, root: Path, count_fn: Callable[[str], int], used: int, budget: int,
+    node: Node,
+    root: Path,
+    count_fn: Callable[[str], int],
+    used: int,
+    budget: int,
 ) -> tuple[str, str]:
     """Try full source, fall back to signature, then summary."""
     full = _read_full_source(node, root)

@@ -4,6 +4,7 @@ All metrics are computed from the AST structure alone. The only
 language-specific input is a BranchMap that maps tree-sitter node
 types to semantic roles (branches, loops, boolean operators, etc.).
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -117,16 +118,33 @@ def compute_metrics_and_hash(func_node: TSNode, branch_map: BranchMap) -> Extrac
 
 
 # Sets shared with hashing.py — keep in sync
-_HASH_SKIP = frozenset({
-    "comment", "line_comment", "block_comment",
-})
+_HASH_SKIP = frozenset(
+    {
+        "comment",
+        "line_comment",
+        "block_comment",
+    }
+)
 
-_HASH_NORMALIZE = frozenset({
-    "identifier", "type_identifier", "field_identifier",
-    "string", "string_content", "string_literal",
-    "integer", "integer_literal", "float", "float_literal",
-    "number", "true", "false", "none", "null",
-})
+_HASH_NORMALIZE = frozenset(
+    {
+        "identifier",
+        "type_identifier",
+        "field_identifier",
+        "string",
+        "string_content",
+        "string_literal",
+        "integer",
+        "integer_literal",
+        "float",
+        "float_literal",
+        "number",
+        "true",
+        "false",
+        "none",
+        "null",
+    }
+)
 
 
 def _walk_fused(
@@ -306,37 +324,71 @@ def _has_logical_operator(node: TSNode, tokens: frozenset[str]) -> bool:
 # --- Per-language branch maps ---
 
 PYTHON_BRANCH_MAP = BranchMap(
-    branch_nodes=frozenset({
-        "if_statement", "elif_clause", "for_statement", "while_statement",
-        "except_clause", "with_statement", "conditional_expression",
-        "match_statement", "case_clause",
-    }),
+    branch_nodes=frozenset(
+        {
+            "if_statement",
+            "elif_clause",
+            "for_statement",
+            "while_statement",
+            "except_clause",
+            "with_statement",
+            "conditional_expression",
+            "match_statement",
+            "case_clause",
+        }
+    ),
     boolean_operators=frozenset({"boolean_operator"}),
-    nesting_nodes=frozenset({
-        "if_statement", "for_statement", "while_statement",
-        "try_statement", "with_statement", "match_statement",
-    }),
+    nesting_nodes=frozenset(
+        {
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "with_statement",
+            "match_statement",
+        }
+    ),
     loop_nodes=frozenset({"for_statement", "while_statement"}),
     function_nodes=frozenset({"function_definition"}),
 )
 
 JS_BRANCH_MAP = BranchMap(
-    branch_nodes=frozenset({
-        "if_statement", "else_clause",
-        "for_statement", "while_statement", "do_statement",
-        "for_in_statement", "for_of_statement",
-        "switch_case", "catch_clause", "ternary_expression",
-    }),
+    branch_nodes=frozenset(
+        {
+            "if_statement",
+            "else_clause",
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "for_in_statement",
+            "for_of_statement",
+            "switch_case",
+            "catch_clause",
+            "ternary_expression",
+        }
+    ),
     boolean_operators=frozenset({"binary_expression"}),
-    nesting_nodes=frozenset({
-        "if_statement", "for_statement", "while_statement", "do_statement",
-        "for_in_statement", "for_of_statement",
-        "try_statement", "switch_statement",
-    }),
-    loop_nodes=frozenset({
-        "for_statement", "while_statement", "do_statement",
-        "for_in_statement", "for_of_statement",
-    }),
+    nesting_nodes=frozenset(
+        {
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "for_in_statement",
+            "for_of_statement",
+            "try_statement",
+            "switch_statement",
+        }
+    ),
+    loop_nodes=frozenset(
+        {
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "for_in_statement",
+            "for_of_statement",
+        }
+    ),
     function_nodes=frozenset({"function_declaration", "method_definition", "arrow_function"}),
     logical_operator_tokens=frozenset({"&&", "||", "??"}),
 )

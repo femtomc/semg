@@ -1,14 +1,11 @@
 import json
 import os
-from pathlib import Path
 
 import pytest
 
-from smg.graph import SemGraph
-from smg.model import Node, NodeType, RelType
+from smg.model import NodeType, RelType
 from smg.scan import collect_files, file_to_module_name, scan_paths
-from smg.storage import init_project, load_graph, save_graph
-
+from smg.storage import init_project, load_graph
 
 # --- Name resolution tests (no tree-sitter needed) ---
 
@@ -47,6 +44,7 @@ def test_file_to_module_name_src_no_init(tmp_path):
 
 def test_collect_files_excludes(tmp_path):
     from smg.langs import load_extractors
+
     load_extractors()
 
     (tmp_path / "good.py").write_text("x = 1")
@@ -64,6 +62,7 @@ def test_collect_files_excludes(tmp_path):
 
 def test_collect_files_custom_exclude(tmp_path):
     from smg.langs import load_extractors
+
     load_extractors()
 
     (tmp_path / "keep.py").write_text("x = 1")
@@ -79,6 +78,7 @@ def test_collect_files_custom_exclude(tmp_path):
 
 try:
     import tree_sitter_python
+
     HAS_TREE_SITTER = True
 except ImportError:
     HAS_TREE_SITTER = False
@@ -344,10 +344,10 @@ def test_scan_clean(tmp_path):
 
     # Remove helper from source
     core = root / "src" / "mylib" / "core.py"
-    core.write_text('''\
+    core.write_text("""\
 class Base:
     pass
-''')
+""")
 
     scan_paths(graph, root, [root / "src"], clean=True)
     assert graph.get_node("mylib.core.helper") is None
@@ -370,6 +370,7 @@ def test_scan_docstrings(tmp_path):
 def test_scan_cli(tmp_path):
     """End-to-end CLI test."""
     from click.testing import CliRunner
+
     from smg.cli import main
 
     root = _write_python_project(tmp_path)
@@ -400,13 +401,13 @@ def test_scan_calls_simple(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "core.py").write_text('''\
+    (pkg / "core.py").write_text("""\
 def helper():
     pass
 
 def main():
     helper()
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -423,14 +424,14 @@ def test_scan_calls_self_method(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "engine.py").write_text('''\
+    (pkg / "engine.py").write_text("""\
 class Engine:
     def start(self):
         pass
 
     def run(self):
         self.start()
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -447,14 +448,14 @@ def test_scan_calls_between_modules(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "utils.py").write_text('''\
+    (pkg / "utils.py").write_text("""\
 def format_name(name):
     return name.strip()
-''')
-    (pkg / "core.py").write_text('''\
+""")
+    (pkg / "core.py").write_text("""\
 def process():
     format_name("hello")
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -471,12 +472,12 @@ def test_scan_calls_builtins_skipped(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "core.py").write_text('''\
+    (pkg / "core.py").write_text("""\
 def main():
     print("hello")
     x = len([1, 2, 3])
     y = range(10)
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -492,7 +493,7 @@ def test_scan_calls_deduplication(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "core.py").write_text('''\
+    (pkg / "core.py").write_text("""\
 def helper():
     pass
 
@@ -500,7 +501,7 @@ def main():
     helper()
     helper()
     helper()
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -517,7 +518,7 @@ def test_scan_calls_nested(tmp_path):
     pkg = root / "src" / "app"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").touch()
-    (pkg / "core.py").write_text('''\
+    (pkg / "core.py").write_text("""\
 def a():
     pass
 
@@ -529,7 +530,7 @@ def main():
         a()
     for x in []:
         b()
-''')
+""")
     init_project(root)
     graph = load_graph(root)
     scan_paths(graph, root, [root / "src"])
@@ -578,6 +579,7 @@ def test_scan_clean_removes_deleted_file_nodes(tmp_path):
 def test_collect_files_path_pattern(tmp_path):
     """Patterns containing / match against relative paths, not just basenames."""
     from smg.langs import load_extractors
+
     load_extractors()
 
     gen = tmp_path / "src" / "generated"
@@ -600,6 +602,7 @@ def test_collect_files_path_pattern(tmp_path):
 def test_collect_files_basename_pattern_still_works(tmp_path):
     """Basename-only patterns (no /) still match anywhere in the tree."""
     from smg.langs import load_extractors
+
     load_extractors()
 
     (tmp_path / "good.py").write_text("x = 1")

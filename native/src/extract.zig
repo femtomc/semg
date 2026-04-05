@@ -378,21 +378,20 @@ fn isUpperCase(s: []const u8) bool {
 
 // Builtin check using hash set
 const py_builtins = std.StaticStringMap(void).initComptime(.{
-    .{ "print", {} },  .{ "len", {} },    .{ "range", {} },    .{ "enumerate", {} },
-    .{ "zip", {} },    .{ "map", {} },    .{ "filter", {} },   .{ "isinstance", {} },
-    .{ "issubclass", {} }, .{ "hasattr", {} }, .{ "getattr", {} }, .{ "setattr", {} },
-    .{ "type", {} },   .{ "id", {} },     .{ "hash", {} },     .{ "repr", {} },
-    .{ "str", {} },    .{ "int", {} },    .{ "float", {} },    .{ "bool", {} },
-    .{ "bytes", {} },  .{ "list", {} },   .{ "dict", {} },     .{ "set", {} },
-    .{ "tuple", {} },  .{ "sorted", {} }, .{ "reversed", {} }, .{ "min", {} },
-    .{ "max", {} },    .{ "sum", {} },    .{ "abs", {} },      .{ "round", {} },
-    .{ "open", {} },   .{ "iter", {} },   .{ "next", {} },     .{ "any", {} },
-    .{ "all", {} },    .{ "super", {} },  .{ "property", {} }, .{ "staticmethod", {} },
-    .{ "classmethod", {} }, .{ "ValueError", {} }, .{ "TypeError", {} },
-    .{ "KeyError", {} }, .{ "AttributeError", {} }, .{ "RuntimeError", {} },
-    .{ "Exception", {} }, .{ "NotImplementedError", {} }, .{ "frozenset", {} },
-    .{ "delattr", {} }, .{ "StopIteration", {} }, .{ "OSError", {} },
-    .{ "IOError", {} }, .{ "FileNotFoundError", {} }, .{ "ImportError", {} },
+    .{ "print", {} },          .{ "len", {} },               .{ "range", {} },         .{ "enumerate", {} },
+    .{ "zip", {} },            .{ "map", {} },               .{ "filter", {} },        .{ "isinstance", {} },
+    .{ "issubclass", {} },     .{ "hasattr", {} },           .{ "getattr", {} },       .{ "setattr", {} },
+    .{ "type", {} },           .{ "id", {} },                .{ "hash", {} },          .{ "repr", {} },
+    .{ "str", {} },            .{ "int", {} },               .{ "float", {} },         .{ "bool", {} },
+    .{ "bytes", {} },          .{ "list", {} },              .{ "dict", {} },          .{ "set", {} },
+    .{ "tuple", {} },          .{ "sorted", {} },            .{ "reversed", {} },      .{ "min", {} },
+    .{ "max", {} },            .{ "sum", {} },               .{ "abs", {} },           .{ "round", {} },
+    .{ "open", {} },           .{ "iter", {} },              .{ "next", {} },          .{ "any", {} },
+    .{ "all", {} },            .{ "super", {} },             .{ "property", {} },      .{ "staticmethod", {} },
+    .{ "classmethod", {} },    .{ "ValueError", {} },        .{ "TypeError", {} },     .{ "KeyError", {} },
+    .{ "AttributeError", {} }, .{ "RuntimeError", {} },      .{ "Exception", {} },     .{ "NotImplementedError", {} },
+    .{ "frozenset", {} },      .{ "delattr", {} },           .{ "StopIteration", {} }, .{ "OSError", {} },
+    .{ "IOError", {} },        .{ "FileNotFoundError", {} }, .{ "ImportError", {} },
 });
 
 // --- Qualified name buffer ---
@@ -871,10 +870,14 @@ export fn smg_extract_python_batch(
         // Serial fallback
         for (0..count) |i| {
             entries[i].out_len = smg_extract_python(
-                entries[i].source, entries[i].source_len,
-                entries[i].module_name, entries[i].module_name_len,
-                entries[i].file_path, entries[i].file_path_len,
-                entries[i].out_buf, entries[i].out_buf_cap,
+                entries[i].source,
+                entries[i].source_len,
+                entries[i].module_name,
+                entries[i].module_name_len,
+                entries[i].file_path,
+                entries[i].file_path_len,
+                entries[i].out_buf,
+                entries[i].out_buf_cap,
             );
         }
         return;
@@ -893,10 +896,14 @@ export fn smg_extract_python_batch(
             // Fallback: do this chunk serially
             for (start..end) |i| {
                 entries[i].out_len = smg_extract_python(
-                    entries[i].source, entries[i].source_len,
-                    entries[i].module_name, entries[i].module_name_len,
-                    entries[i].file_path, entries[i].file_path_len,
-                    entries[i].out_buf, entries[i].out_buf_cap,
+                    entries[i].source,
+                    entries[i].source_len,
+                    entries[i].module_name,
+                    entries[i].module_name_len,
+                    entries[i].file_path,
+                    entries[i].file_path_len,
+                    entries[i].out_buf,
+                    entries[i].out_buf_cap,
                 );
             }
             continue;

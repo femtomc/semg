@@ -1,4 +1,5 @@
 """Entity-level blame: map graph entities to their most recent commits."""
+
 from __future__ import annotations
 
 import subprocess
@@ -29,9 +30,16 @@ def blame_entity(node: Node, root: Path) -> BlameEntry | None:
     end = node.end_line or node.line
     try:
         result = subprocess.run(
-            ["git", "log", "-1", "--format=%H%n%ae%n%ai%n%s",
-             f"-L{node.line},{end}:{node.file}"],
-            capture_output=True, text=True, cwd=root,
+            [
+                "git",
+                "log",
+                "-1",
+                "--format=%H%n%ae%n%ai%n%s",
+                f"-L{node.line},{end}:{node.file}",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=root,
         )
     except FileNotFoundError:
         return None

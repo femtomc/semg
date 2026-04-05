@@ -1,38 +1,47 @@
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
 
 import rich_click as click
-from rich.table import Table
+
+if TYPE_CHECKING:
+    from smg.analyze import AnalysisResult
 from rich.panel import Panel
+from rich.table import Table
 
-from smg import export, query
-from smg.graph import SemGraph
-from smg.model import RelType
-
+from smg import query
 from smg.cli import (
-    main,
+    EXIT_NOT_FOUND,
+    _auto_fmt,
     _load,
+    _rel_style,
     _resolve_or_exit,
     _scope_graph,
-    _auto_fmt,
     _type_badge,
-    _rel_style,
-    _output_names,
-    _output_graph,
-    _output_edges,
     console,
     err_console,
-    EXIT_OK,
-    EXIT_NOT_FOUND,
-    EXIT_VALIDATION,
+    main,
 )
+from smg.graph import SemGraph
+from smg.model import RelType
 
 
 @main.command()
 @click.argument("name")
-@click.option("--depth", default=1, type=click.IntRange(0, 2), help="Detail level: 0=identity, 1=connections, 2=neighborhood")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--depth",
+    default=1,
+    type=click.IntRange(0, 2),
+    help="Detail level: 0=identity, 1=connections, 2=neighborhood",
+)
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def about(name: str, depth: int, fmt: str | None) -> None:
     """What is X? Progressive context card for a node.
 
@@ -127,8 +136,18 @@ def about(name: str, depth: int, fmt: str | None) -> None:
 
 @main.command()
 @click.argument("name")
-@click.option("--rel", default=None, help="Filter by relationship type (e.g. calls, imports, inherits)")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--rel",
+    default=None,
+    help="Filter by relationship type (e.g. calls, imports, inherits)",
+)
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def usages(name: str, rel: str | None, fmt: str | None) -> None:
     """Where is X used? Every direct reference with source location.
 
@@ -169,11 +188,16 @@ def usages(name: str, rel: str | None, fmt: str | None) -> None:
     usage_list.sort(key=lambda u: (u.get("file", ""), u.get("line", 0)))
 
     if fmt == "json":
-        click.echo(json_mod.dumps({
-            "target": name,
-            "usages": usage_list,
-            "count": len(usage_list),
-        }, indent=2))
+        click.echo(
+            json_mod.dumps(
+                {
+                    "target": name,
+                    "usages": usage_list,
+                    "count": len(usage_list),
+                },
+                indent=2,
+            )
+        )
         return
 
     if not usage_list:
@@ -200,7 +224,13 @@ def usages(name: str, rel: str | None, fmt: str | None) -> None:
 @main.command()
 @click.argument("name")
 @click.option("--depth", default=None, type=int, help="Max traversal depth")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def impact(name: str, depth: int | None, fmt: str | None) -> None:
     """What breaks if I change X? Reverse transitive impact analysis.
 
@@ -218,11 +248,16 @@ def impact(name: str, depth: int | None, fmt: str | None) -> None:
     affected = query.impact(graph, name, max_depth=depth)
 
     if fmt == "json":
-        click.echo(json_mod.dumps({
-            "target": name,
-            "affected": affected,
-            "count": len(affected),
-        }, indent=2))
+        click.echo(
+            json_mod.dumps(
+                {
+                    "target": name,
+                    "affected": affected,
+                    "count": len(affected),
+                },
+                indent=2,
+            )
+        )
         return
 
     if not affected:
@@ -240,7 +275,13 @@ def impact(name: str, depth: int | None, fmt: str | None) -> None:
 @main.command()
 @click.argument("a")
 @click.argument("b")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def between(a: str, b: str, fmt: str | None) -> None:
     """How do A and B relate? Shortest path + direct edges.
 
@@ -262,12 +303,17 @@ def between(a: str, b: str, fmt: str | None) -> None:
             direct.append({"source": edge.source, "rel": edge.rel.value, "target": edge.target})
 
     if fmt == "json":
-        click.echo(json_mod.dumps({
-            "source": a,
-            "target": b,
-            "path": path,
-            "direct_edges": direct,
-        }, indent=2))
+        click.echo(
+            json_mod.dumps(
+                {
+                    "source": a,
+                    "target": b,
+                    "path": path,
+                    "direct_edges": direct,
+                },
+                indent=2,
+            )
+        )
         return
 
     if path:
@@ -277,14 +323,20 @@ def between(a: str, b: str, fmt: str | None) -> None:
         console.print(f"[dim]No path between {a} and {b}[/]")
 
     if direct:
-        console.print(f"\n[bold]Direct edges:[/]")
+        console.print("\n[bold]Direct edges:[/]")
         for d in direct:
             console.print(f"  {d['source']} [dim]--{_rel_style(d['rel'])}-->[/] {d['target']}")
 
 
 @main.command()
 @click.option("--top", "top_n", default=10, type=int, help="Number of top connected nodes to show")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def overview(top_n: int, fmt: str | None) -> None:
     """Orient me. High-level summary of the graph.
 
@@ -304,13 +356,15 @@ def overview(top_n: int, fmt: str | None) -> None:
     for node in nodes:
         inc = len(graph.incoming(node.name))
         out = len(graph.outgoing(node.name))
-        connectivity.append({
-            "name": node.name,
-            "type": node.type.value,
-            "incoming": inc,
-            "outgoing": out,
-            "total": inc + out,
-        })
+        connectivity.append(
+            {
+                "name": node.name,
+                "type": node.type.value,
+                "incoming": inc,
+                "outgoing": out,
+                "total": inc + out,
+            }
+        )
     connectivity.sort(key=lambda x: x["total"], reverse=True)
 
     # Module summaries
@@ -322,26 +376,41 @@ def overview(top_n: int, fmt: str | None) -> None:
     modules.sort(key=lambda x: x["children"], reverse=True)
 
     if fmt == "json":
-        click.echo(json_mod.dumps({
-            "nodes": len(nodes),
-            "edges": len(edges),
-            "top_connected": connectivity[:top_n],
-            "modules": modules,
-        }, indent=2))
+        click.echo(
+            json_mod.dumps(
+                {
+                    "nodes": len(nodes),
+                    "edges": len(edges),
+                    "top_connected": connectivity[:top_n],
+                    "modules": modules,
+                },
+                indent=2,
+            )
+        )
         return
 
     # Rich text
     console.print(f"[bold]Graph:[/] {len(nodes)} nodes, {len(edges)} edges\n")
 
     # Top connected
-    table = Table(title=f"[bold]Most Connected[/] (top {top_n})", border_style="dim", pad_edge=False)
+    table = Table(
+        title=f"[bold]Most Connected[/] (top {top_n})",
+        border_style="dim",
+        pad_edge=False,
+    )
     table.add_column("Name", style="bold")
     table.add_column("Type", style="dim")
     table.add_column("In", justify="right")
     table.add_column("Out", justify="right")
     table.add_column("Total", justify="right", style="bold")
     for c in connectivity[:top_n]:
-        table.add_row(c["name"], _type_badge(c["type"]), str(c["incoming"]), str(c["outgoing"]), str(c["total"]))
+        table.add_row(
+            c["name"],
+            _type_badge(c["type"]),
+            str(c["incoming"]),
+            str(c["outgoing"]),
+            str(c["total"]),
+        )
     console.print(table)
 
     # Modules
@@ -358,7 +427,13 @@ def overview(top_n: int, fmt: str | None) -> None:
 
 @main.command()
 @click.argument("ref", default="HEAD")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def diff(ref: str, fmt: str | None) -> None:
     """What changed structurally? Compare graph against a git ref.
 
@@ -367,7 +442,7 @@ def diff(ref: str, fmt: str | None) -> None:
     """
     import json as json_mod
 
-    from smg.diff import GraphDiff, diff_graphs, load_graph_from_git
+    from smg.diff import diff_graphs, load_graph_from_git
 
     graph, root = _load()
     fmt = _auto_fmt(fmt)
@@ -389,15 +464,24 @@ def diff(ref: str, fmt: str | None) -> None:
             "added_nodes": [n.name for n in result.added_nodes],
             "removed_nodes": [n.name for n in result.removed_nodes],
             "changed_nodes": [
-                {"name": node.name, "changes": [{"field": c.field, "old": c.old, "new": c.new} for c in changes]}
+                {
+                    "name": node.name,
+                    "changes": [{"field": c.field, "old": c.old, "new": c.new} for c in changes],
+                }
                 for node, changes in result.changed_nodes
             ],
             "renamed_nodes": [
-                {"old_name": rn.old_name, "new_name": rn.new_name, "match_type": rn.match_type}
+                {
+                    "old_name": rn.old_name,
+                    "new_name": rn.new_name,
+                    "match_type": rn.match_type,
+                }
                 for rn in result.renamed_nodes
             ],
             "added_edges": [{"source": e.source, "rel": e.rel.value, "target": e.target} for e in result.added_edges],
-            "removed_edges": [{"source": e.source, "rel": e.rel.value, "target": e.target} for e in result.removed_edges],
+            "removed_edges": [
+                {"source": e.source, "rel": e.rel.value, "target": e.target} for e in result.removed_edges
+            ],
             "summary": {
                 "nodes_added": len(result.added_nodes),
                 "nodes_removed": len(result.removed_nodes),
@@ -463,17 +547,57 @@ def diff(ref: str, fmt: str | None) -> None:
         parts.append(f"[yellow]~{len(result.changed_nodes)}[/]")
     if result.renamed_nodes:
         parts.append(f"[blue]↷{len(result.renamed_nodes)}[/]")
-    console.print(f"\n[dim]Nodes: {', '.join(parts)} | Edges: +{len(result.added_edges)} -{len(result.removed_edges)}[/]")
+    console.print(
+        f"\n[dim]Nodes: {', '.join(parts)} | Edges: +{len(result.added_edges)} -{len(result.removed_edges)}[/]"
+    )
 
 
 @main.command()
-@click.option("--top", "top_n", default=10, type=int, help="Number of top entries to show per ranking")
-@click.option("--module", "module_filter", default=None, help="Scope analysis to nodes under this module/package prefix")
-@click.option("--since", "since_ref", default=None, help="Only analyze nodes/edges added or changed since a git ref (e.g. HEAD~5)")
-@click.option("--summary", is_flag=True, help="Show only hotspots and key findings, skip full listings")
-@click.option("--churn-days", default=90, type=int, help="Time window for git churn analysis [dim](default: 90 days)[/]")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
-def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summary: bool, churn_days: int, fmt: str | None) -> None:
+@click.option(
+    "--top",
+    "top_n",
+    default=10,
+    type=int,
+    help="Number of top entries to show per ranking",
+)
+@click.option(
+    "--module",
+    "module_filter",
+    default=None,
+    help="Scope analysis to nodes under this module/package prefix",
+)
+@click.option(
+    "--since",
+    "since_ref",
+    default=None,
+    help="Only analyze nodes/edges added or changed since a git ref (e.g. HEAD~5)",
+)
+@click.option(
+    "--summary",
+    is_flag=True,
+    help="Show only hotspots and key findings, skip full listings",
+)
+@click.option(
+    "--churn-days",
+    default=90,
+    type=int,
+    help="Time window for git churn analysis [dim](default: 90 days)[/]",
+)
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
+def analyze(
+    top_n: int,
+    module_filter: str | None,
+    since_ref: str | None,
+    summary: bool,
+    churn_days: int,
+    fmt: str | None,
+) -> None:
     """Deep architectural analysis with hotspot detection.
 
     \b
@@ -495,7 +619,7 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
     kcore (with members), classes, modules, sdp_violations,
     fan_in_out, dead_code, layering_violations, smells
     """
-    from smg.analyze import AnalysisResult, filter_to_delta, run_analysis
+    from smg.analyze import filter_to_delta, run_analysis
 
     graph, _root = _load()
     fmt = _auto_fmt(fmt)
@@ -507,6 +631,7 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
     delta_names: set[str] | None = None
     if since_ref:
         from smg.diff import diff_graphs, load_graph_from_git
+
         old_graph = load_graph_from_git(_root, since_ref)
         if old_graph is None:
             old_graph = SemGraph()
@@ -523,14 +648,21 @@ def analyze(top_n: int, module_filter: str | None, since_ref: str | None, summar
     # Progress spinner
     use_progress = fmt == "text" and sys.stdout.isatty()
     progress_ctx = None
+    task_id = None
     if use_progress:
         from rich.progress import Progress, SpinnerColumn, TextColumn
-        progress_ctx = Progress(SpinnerColumn(), TextColumn("[bold]{task.description}"), console=console, transient=True)
+
+        progress_ctx = Progress(
+            SpinnerColumn(),
+            TextColumn("[bold]{task.description}"),
+            console=console,
+            transient=True,
+        )
         progress_ctx.start()
         task_id = progress_ctx.add_task("Analyzing...")
 
     def _step(desc: str) -> None:
-        if progress_ctx is not None:
+        if progress_ctx is not None and task_id is not None:
             progress_ctx.update(task_id, description=desc)
 
     # Run analysis
@@ -561,21 +693,31 @@ def _render_analyze_json(r: "AnalysisResult", graph: SemGraph, top_n: int, summa
     data: dict = {
         "hotspots": r.hotspots[:top_n],
         "graph": {
-            "nodes": r.node_count, "edges": r.edge_count,
-            "cycles": r.cycles, "cycle_count": len(r.cycles),
-            "max_layer": max_layer, "bridge_count": len(r.bridges),
+            "nodes": r.node_count,
+            "edges": r.edge_count,
+            "cycles": r.cycles,
+            "cycle_count": len(r.cycles),
+            "max_layer": max_layer,
+            "bridge_count": len(r.bridges),
             "bridges": [list(b) for b in r.bridges[:top_n]],
         },
         "pagerank": [{"name": n, "rank": round(v, 6)} for n, v in pr_top],
         "betweenness": [{"name": n, "centrality": round(v, 6)} for n, v in bc_top],
-        "kcore": {"max_coreness": max_k, "core_size": len(core_members), "members": core_members[:top_n]},
+        "kcore": {
+            "max_coreness": max_k,
+            "core_size": len(core_members),
+            "members": core_members[:top_n],
+        },
     }
     if not summary:
         data["classes"] = {
             name: {
-                "wmc": r.wmc.get(name, 0), "max_method_cc": r.max_method_cc.get(name, 0),
-                "dit": r.dit.get(name, 0), "noc": r.noc.get(name, 0),
-                "cbo": r.cbo.get(name, 0), "rfc": r.rfc.get(name, 0),
+                "wmc": r.wmc.get(name, 0),
+                "max_method_cc": r.max_method_cc.get(name, 0),
+                "dit": r.dit.get(name, 0),
+                "noc": r.noc.get(name, 0),
+                "cbo": r.cbo.get(name, 0),
+                "rfc": r.rfc.get(name, 0),
                 "lcom4": r.lcom4.get(name, 0),
             }
             for name in sorted(r.wmc.keys())
@@ -585,23 +727,32 @@ def _render_analyze_json(r: "AnalysisResult", graph: SemGraph, top_n: int, summa
     data["dead_code"] = r.dead_code
     data["layering_violations"] = r.layering_violations
     data["smells"] = {
-        "god_classes": r.god_classes, "feature_envy": r.feature_envy,
-        "shotgun_surgery": r.shotgun_surgery, "god_files": r.god_files,
+        "god_classes": r.god_classes,
+        "feature_envy": r.feature_envy,
+        "shotgun_surgery": r.shotgun_surgery,
+        "god_files": r.god_files,
     }
     if r.churn:
         data["churn"] = {
-            "total_commits": r.churn.total_commits, "time_range": r.churn.time_range,
+            "total_commits": r.churn.total_commits,
+            "time_range": r.churn.time_range,
             "top_entities": sorted(
                 [{"name": n, "touches": t} for n, t in r.churn.entity_churn.items()],
-                key=lambda x: x["touches"], reverse=True,
+                key=lambda x: x["touches"],
+                reverse=True,
             )[:top_n],
             "top_files": sorted(
                 [{"file": f, "touches": t} for f, t in r.churn.file_churn.items()],
-                key=lambda x: x["touches"], reverse=True,
+                key=lambda x: x["touches"],
+                reverse=True,
             )[:top_n],
         }
     if not summary:
-        fio_top = sorted(r.fan_in_out.items(), key=lambda x: x[1]["fan_in"] + x[1]["fan_out"], reverse=True)[:top_n]
+        fio_top = sorted(
+            r.fan_in_out.items(),
+            key=lambda x: x[1]["fan_in"] + x[1]["fan_out"],
+            reverse=True,
+        )[:top_n]
         data["fan_in_out"] = [{"name": n, **v} for n, v in fio_top]
         hits_hubs = sorted(r.hits.items(), key=lambda x: x[1]["hub"], reverse=True)[:top_n]
         hits_auths = sorted(r.hits.items(), key=lambda x: x[1]["authority"], reverse=True)[:top_n]
@@ -613,8 +764,13 @@ def _render_analyze_json(r: "AnalysisResult", graph: SemGraph, top_n: int, summa
 
 
 def _render_analyze_text(
-    r: "AnalysisResult", graph: SemGraph, top_n: int, summary: bool,
-    module_filter: str | None, since_ref: str | None, delta_names: set[str] | None,
+    r: "AnalysisResult",
+    graph: SemGraph,
+    top_n: int,
+    summary: bool,
+    module_filter: str | None,
+    since_ref: str | None,
+    delta_names: set[str] | None,
 ) -> None:
     """Render analysis results as rich text."""
     max_layer = max(r.layers.values()) if r.layers else 0
@@ -633,7 +789,7 @@ def _render_analyze_text(
 
     # Hotspots
     if r.hotspots:
-        console.print(f"\n[red bold]Hotspots[/] (top problem areas)")
+        console.print("\n[red bold]Hotspots[/] (top problem areas)")
         hs_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
         hs_table.add_column("#", style="dim", width=3)
         hs_table.add_column("Name", style="bold")
@@ -664,7 +820,7 @@ def _render_analyze_text(
                 f" depends on {v['target']} [dim](I={v['target_instability']})[/]"
             )
     else:
-        console.print(f"\n[green]No SDP violations[/]")
+        console.print("\n[green]No SDP violations[/]")
 
     # Dead code
     if r.dead_code:
@@ -694,9 +850,14 @@ def _render_analyze_text(
     if smells:
         console.print(f"\n[red bold]Code Smells[/] ({len(smells)})")
         for gc in r.god_classes[:3]:
-            console.print(f"  [red]God Class:[/] {gc['name']} [dim](WMC={gc['wmc']}, CBO={gc['cbo']}, LCOM4={gc['lcom4']})[/]")
+            console.print(
+                f"  [red]God Class:[/] {gc['name']} [dim](WMC={gc['wmc']}, CBO={gc['cbo']}, LCOM4={gc['lcom4']})[/]"
+            )
         for fe in r.feature_envy[:3]:
-            console.print(f"  [red]Feature Envy:[/] {fe['method']} envies {fe['envied_class']} [dim]({fe['envied_refs']} refs vs {fe['own_refs']} own)[/]")
+            console.print(
+                f"  [red]Feature Envy:[/] {fe['method']} envies {fe['envied_class']}"
+                f" [dim]({fe['envied_refs']} refs vs {fe['own_refs']} own)[/]"
+            )
         for ss in r.shotgun_surgery[:3]:
             console.print(f"  [red]Shotgun Surgery:[/] {ss['name']} [dim](fan-out={ss['fan_out']})[/]")
         for gf in r.god_files[:3]:
@@ -715,14 +876,17 @@ def _render_analyze_text(
         console.print(churn_table)
 
     if summary:
-        console.print(f"\n[dim]Architecture depth: {max_layer + 1} layers | Core: {len(core_members)} nodes (k={max_k}) | Bridges: {len(r.bridges)}[/]")
+        console.print(
+            f"\n[dim]Architecture depth: {max_layer + 1} layers | Core: {len(core_members)} nodes (k={max_k})"
+            f" | Bridges: {len(r.bridges)}[/]"
+        )
         return
 
     # --- Full output ---
 
     console.print(f"\n[bold]Architecture Depth:[/] {max_layer + 1} layers")
 
-    console.print(f"\n[bold]Most Important (PageRank)[/]")
+    console.print("\n[bold]Most Important (PageRank)[/]")
     pr_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
     pr_table.add_column("#", style="dim", width=3)
     pr_table.add_column("Name", style="bold")
@@ -733,7 +897,7 @@ def _render_analyze_text(
 
     bc_nonzero = [(n, c) for n, c in bc_top if c > 0]
     if bc_nonzero:
-        console.print(f"\n[bold]Structural Bottlenecks (Betweenness)[/]")
+        console.print("\n[bold]Structural Bottlenecks (Betweenness)[/]")
         bc_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
         bc_table.add_column("#", style="dim", width=3)
         bc_table.add_column("Name", style="bold")
@@ -755,7 +919,7 @@ def _render_analyze_text(
             console.print(f"  [yellow]-[/] {a} -- {b}")
 
     if r.wmc:
-        console.print(f"\n[bold]Class Metrics (CK Suite)[/]")
+        console.print("\n[bold]Class Metrics (CK Suite)[/]")
         ck_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
         ck_table.add_column("Class", style="bold")
         for col in ("WMC", "MaxCC", "CBO", "RFC", "LCOM4", "DIT", "NOC"):
@@ -764,31 +928,60 @@ def _render_analyze_text(
             lcom_val = r.lcom4.get(name, 0)
             lcom_str = f"[red]{lcom_val}[/]" if lcom_val > 1 else str(lcom_val)
             ck_table.add_row(
-                name, str(r.wmc.get(name, 0)), str(r.max_method_cc.get(name, 0)),
-                str(r.cbo.get(name, 0)), str(r.rfc.get(name, 0)), lcom_str,
-                str(r.dit.get(name, 0)), str(r.noc.get(name, 0)),
+                name,
+                str(r.wmc.get(name, 0)),
+                str(r.max_method_cc.get(name, 0)),
+                str(r.cbo.get(name, 0)),
+                str(r.rfc.get(name, 0)),
+                lcom_str,
+                str(r.dit.get(name, 0)),
+                str(r.noc.get(name, 0)),
             )
         console.print(ck_table)
 
     if r.martin:
-        console.print(f"\n[bold]Module Metrics (Martin)[/]")
+        console.print("\n[bold]Module Metrics (Martin)[/]")
         mod_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
         for col in ("Module", "Ca", "Ce", "I", "A", "D"):
-            mod_table.add_column(col, justify="right" if col != "Module" else "left", style="bold" if col == "Module" else None)
+            mod_table.add_column(
+                col,
+                justify="right" if col != "Module" else "left",
+                style="bold" if col == "Module" else None,
+            )
         for name in sorted(r.martin.keys()):
             m = r.martin[name]
             d_str = f"[red]{m['distance']}[/]" if m["distance"] > 0.7 else str(m["distance"])
-            mod_table.add_row(name, str(m["ca"]), str(m["ce"]), str(m["instability"]), str(m["abstractness"]), d_str)
+            mod_table.add_row(
+                name,
+                str(m["ca"]),
+                str(m["ce"]),
+                str(m["instability"]),
+                str(m["abstractness"]),
+                d_str,
+            )
         console.print(mod_table)
 
     if r.fan_in_out:
         console.print(f"\n[bold]Fan-In / Fan-Out (top {top_n})[/]")
         fio_table = Table(show_header=True, header_style="bold", border_style="dim", pad_edge=False)
         for col in ("Name", "Fan-In", "Fan-Out", "Total"):
-            fio_table.add_column(col, justify="right" if col != "Name" else "left", style="bold" if col == "Name" else None)
-        fio_sorted = sorted(r.fan_in_out.items(), key=lambda x: x[1]["fan_in"] + x[1]["fan_out"], reverse=True)
+            fio_table.add_column(
+                col,
+                justify="right" if col != "Name" else "left",
+                style="bold" if col == "Name" else None,
+            )
+        fio_sorted = sorted(
+            r.fan_in_out.items(),
+            key=lambda x: x[1]["fan_in"] + x[1]["fan_out"],
+            reverse=True,
+        )
         for name, vals in fio_sorted[:top_n]:
-            fio_table.add_row(name, str(vals["fan_in"]), str(vals["fan_out"]), str(vals["fan_in"] + vals["fan_out"]))
+            fio_table.add_row(
+                name,
+                str(vals["fan_in"]),
+                str(vals["fan_out"]),
+                str(vals["fan_in"] + vals["fan_out"]),
+            )
         console.print(fio_table)
 
     if r.hits:
@@ -798,7 +991,11 @@ def _render_analyze_text(
         hits_table.add_column("Hub", justify="right")
         hits_table.add_column("Authority", justify="right")
         hits_table.add_column("Role", justify="left")
-        hits_combined = sorted(r.hits.items(), key=lambda x: max(x[1]["hub"], x[1]["authority"]), reverse=True)
+        hits_combined = sorted(
+            r.hits.items(),
+            key=lambda x: max(x[1]["hub"], x[1]["authority"]),
+            reverse=True,
+        )
         for name, scores in hits_combined[:top_n]:
             role = "hub" if scores["hub"] > scores["authority"] else "authority"
             if scores["hub"] > 0.01 and scores["authority"] > 0.01:
@@ -810,7 +1007,13 @@ def _render_analyze_text(
 @main.command()
 @click.argument("name")
 @click.option("--tokens", default=4000, type=int, help="Token budget [dim](default: 4000)[/]")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def context(name: str, tokens: int, fmt: str | None) -> None:
     """Pack relevant source code for LLM context within a token budget.
 
@@ -843,8 +1046,12 @@ def context(name: str, tokens: int, fmt: str | None) -> None:
             "truncated": result.truncated,
             "entries": [
                 {
-                    "name": e.name, "type": e.node_type, "relation": e.relation,
-                    "level": e.level, "tokens": e.tokens, "content": e.content,
+                    "name": e.name,
+                    "type": e.node_type,
+                    "relation": e.relation,
+                    "level": e.level,
+                    "tokens": e.tokens,
+                    "content": e.content,
                 }
                 for e in result.entries
             ],
@@ -854,16 +1061,31 @@ def context(name: str, tokens: int, fmt: str | None) -> None:
 
     console.print(f"[bold]Context for[/] {result.target} [dim]({result.total_tokens}/{result.budget} tokens)[/]\n")
 
-    _level_badge = {"full": "[green]full[/]", "signature": "[yellow]sig[/]", "summary": "[dim]sum[/]"}
+    _level_badge = {
+        "full": "[green]full[/]",
+        "signature": "[yellow]sig[/]",
+        "summary": "[dim]sum[/]",
+    }
 
     for entry in result.entries:
         badge = _level_badge.get(entry.level, entry.level)
-        header = f"[bold]{entry.name}[/] [{_type_badge(entry.node_type)}] {badge} [dim]({entry.relation}, ~{entry.tokens} tok)[/]"
+        header = (
+            f"[bold]{entry.name}[/] [{_type_badge(entry.node_type)}] {badge}"
+            f" [dim]({entry.relation}, ~{entry.tokens} tok)[/]"
+        )
 
         if entry.level in ("full", "signature") and entry.file:
             from rich.syntax import Syntax
+
             ext = Path(entry.file).suffix if entry.file else ".txt"
-            _lang_map = {".py": "python", ".js": "javascript", ".ts": "typescript", ".c": "c", ".cpp": "cpp", ".zig": "zig"}
+            _lang_map = {
+                ".py": "python",
+                ".js": "javascript",
+                ".ts": "typescript",
+                ".c": "c",
+                ".cpp": "cpp",
+                ".zig": "zig",
+            }
             lang = _lang_map.get(ext, "text")
             console.print(header)
             console.print(Syntax(entry.content, lang, line_numbers=True, start_line=entry.line or 1))
@@ -878,7 +1100,13 @@ def context(name: str, tokens: int, fmt: str | None) -> None:
 
 @main.command()
 @click.argument("name")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def blame(name: str, fmt: str | None) -> None:
     """Who last touched this entity? Entity-level git blame.
 
@@ -898,7 +1126,14 @@ def blame(name: str, fmt: str | None) -> None:
     fmt = _auto_fmt(fmt)
 
     # Check if the argument is a file path
-    is_file = "/" in name or name.endswith(".py") or name.endswith(".js") or name.endswith(".ts") or name.endswith(".c") or name.endswith(".zig")
+    is_file = (
+        "/" in name
+        or name.endswith(".py")
+        or name.endswith(".js")
+        or name.endswith(".ts")
+        or name.endswith(".c")
+        or name.endswith(".zig")
+    )
 
     if is_file:
         entries = blame_file(graph, name, root)
@@ -908,9 +1143,17 @@ def blame(name: str, fmt: str | None) -> None:
 
         if fmt == "json":
             data = [
-                {"name": e.name, "type": e.node_type, "file": e.file,
-                 "line": e.line, "end_line": e.end_line,
-                 "commit": e.commit, "author": e.author, "date": e.date, "summary": e.summary}
+                {
+                    "name": e.name,
+                    "type": e.node_type,
+                    "file": e.file,
+                    "line": e.line,
+                    "end_line": e.end_line,
+                    "commit": e.commit,
+                    "author": e.author,
+                    "date": e.date,
+                    "summary": e.summary,
+                }
                 for e in entries
             ]
             click.echo(json_mod.dumps(data, indent=2))
@@ -927,8 +1170,13 @@ def blame(name: str, fmt: str | None) -> None:
         table.add_column("Summary")
         for e in entries:
             table.add_row(
-                f"{e.line}-{e.end_line}", e.name, _type_badge(e.node_type),
-                e.commit, e.author, e.date, e.summary,
+                f"{e.line}-{e.end_line}",
+                e.name,
+                _type_badge(e.node_type),
+                e.commit,
+                e.author,
+                e.date,
+                e.summary,
             )
         console.print(table)
     else:
@@ -940,14 +1188,22 @@ def blame(name: str, fmt: str | None) -> None:
 
         entry = blame_entity(node, root)
         if entry is None:
-            err_console.print(f"[yellow]Warning:[/] no git blame data for [bold]{resolved}[/] (no file/line or not in git)")
+            err_console.print(
+                f"[yellow]Warning:[/] no git blame data for [bold]{resolved}[/] (no file/line or not in git)"
+            )
             sys.exit(EXIT_NOT_FOUND)
 
         if fmt == "json":
             data = {
-                "name": entry.name, "type": entry.node_type, "file": entry.file,
-                "line": entry.line, "end_line": entry.end_line,
-                "commit": entry.commit, "author": entry.author, "date": entry.date, "summary": entry.summary,
+                "name": entry.name,
+                "type": entry.node_type,
+                "file": entry.file,
+                "line": entry.line,
+                "end_line": entry.end_line,
+                "commit": entry.commit,
+                "author": entry.author,
+                "date": entry.date,
+                "summary": entry.summary,
             }
             click.echo(json_mod.dumps(data, indent=2))
             return

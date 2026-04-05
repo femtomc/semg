@@ -3,12 +3,10 @@ from __future__ import annotations
 import rich_click as click
 
 from smg import export
-
 from smg.cli import (
-    main,
     _load,
-    console,
     err_console,
+    main,
 )
 
 
@@ -55,7 +53,12 @@ def export_text() -> None:
 
 
 @export_cmd.command("dsm")
-@click.option("--level", default="module", type=click.Choice(["module", "class", "all"]), help="Granularity: module (default), class, or all nodes")
+@click.option(
+    "--level",
+    default="module",
+    type=click.Choice(["module", "class", "all"]),
+    help="Granularity: module (default), class, or all nodes",
+)
 def export_dsm(level: str) -> None:
     """Export Dependency Structure Matrix as CSV.
 

@@ -1,4 +1,5 @@
 """Tests for entity-level blame."""
+
 from __future__ import annotations
 
 from smg.blame import BlameEntry, blame_entity, blame_file
@@ -33,9 +34,15 @@ def test_blame_file_no_matching_file():
 
 def test_blame_entry_dataclass():
     entry = BlameEntry(
-        name="app.foo", node_type="function", file="app.py",
-        line=1, end_line=5, commit="abc123", author="test@example.com",
-        date="2024-01-01", summary="Fix bug",
+        name="app.foo",
+        node_type="function",
+        file="app.py",
+        line=1,
+        end_line=5,
+        commit="abc123",
+        author="test@example.com",
+        date="2024-01-01",
+        summary="Fix bug",
     )
     assert entry.name == "app.foo"
     assert entry.commit == "abc123"

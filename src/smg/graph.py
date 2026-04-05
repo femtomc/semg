@@ -77,12 +77,8 @@ class SemGraph:
         if name not in self.nodes:
             raise NodeNotFoundError(f"node not found: {name!r}")
         # Remove all incident edges
-        to_remove = {
-            (name, rel, target) for rel, target in self._adj.get(name, set())
-        }
-        to_remove.update(
-            (source, rel, name) for rel, source in self._radj.get(name, set())
-        )
+        to_remove = {(name, rel, target) for rel, target in self._adj.get(name, set())}
+        to_remove.update((source, rel, name) for rel, source in self._radj.get(name, set()))
         for k in to_remove:
             self._remove_edge_indexes(k)
             del self.edges[k]
@@ -219,22 +215,26 @@ class SemGraph:
     def clone(self) -> SemGraph:
         cloned = SemGraph()
         for node in self.nodes.values():
-            cloned.add_node(Node(
-                name=node.name,
-                type=node.type,
-                file=node.file,
-                line=node.line,
-                end_line=node.end_line,
-                docstring=node.docstring,
-                metadata=deepcopy(node.metadata),
-            ))
+            cloned.add_node(
+                Node(
+                    name=node.name,
+                    type=node.type,
+                    file=node.file,
+                    line=node.line,
+                    end_line=node.end_line,
+                    docstring=node.docstring,
+                    metadata=deepcopy(node.metadata),
+                )
+            )
         for edge in self.edges.values():
-            cloned.add_edge(Edge(
-                source=edge.source,
-                target=edge.target,
-                rel=edge.rel,
-                metadata=deepcopy(edge.metadata),
-            ))
+            cloned.add_edge(
+                Edge(
+                    source=edge.source,
+                    target=edge.target,
+                    rel=edge.rel,
+                    metadata=deepcopy(edge.metadata),
+                )
+            )
         return cloned
 
     def __len__(self) -> int:

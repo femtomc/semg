@@ -7,7 +7,7 @@ from pathlib import Path
 
 from smg.graph import SemGraph
 from smg.model import Edge, Node
-from smg.storage import GRAPH_FILE, SMG_DIR, load_graph
+from smg.storage import GRAPH_FILE, SMG_DIR
 
 
 @dataclass
@@ -123,10 +123,15 @@ def _detect_renames(result: GraphDiff) -> None:
         else:
             continue  # ambiguous
 
-        result.renamed_nodes.append(RenamedNode(
-            old_name=match.name, new_name=added_node.name,
-            old_node=match, new_node=added_node, match_type=match_type,
-        ))
+        result.renamed_nodes.append(
+            RenamedNode(
+                old_name=match.name,
+                new_name=added_node.name,
+                old_node=match,
+                new_node=added_node,
+                match_type=match_type,
+            )
+        )
         matched_added.add(added_node.name)
         matched_removed.add(match.name)
 
@@ -135,8 +140,13 @@ def _detect_renames(result: GraphDiff) -> None:
     remaining_removed = [n for n in result.removed_nodes if n.name not in matched_removed]
 
     if remaining_added and remaining_removed:
-        _fuzzy_match(remaining_added, remaining_removed, result.renamed_nodes,
-                     matched_added, matched_removed)
+        _fuzzy_match(
+            remaining_added,
+            remaining_removed,
+            result.renamed_nodes,
+            matched_added,
+            matched_removed,
+        )
 
     result.added_nodes = [n for n in result.added_nodes if n.name not in matched_added]
     result.removed_nodes = [n for n in result.removed_nodes if n.name not in matched_removed]
@@ -201,10 +211,15 @@ def _fuzzy_match(
                 best_match = removed_node
 
         if best_match is not None and best_score >= _JACCARD_THRESHOLD:
-            renamed.append(RenamedNode(
-                old_name=best_match.name, new_name=added_node.name,
-                old_node=best_match, new_node=added_node, match_type="fuzzy",
-            ))
+            renamed.append(
+                RenamedNode(
+                    old_name=best_match.name,
+                    new_name=added_node.name,
+                    old_node=best_match,
+                    new_node=added_node,
+                    match_type="fuzzy",
+                )
+            )
             matched_added.add(added_node.name)
             matched_removed.add(best_match.name)
 

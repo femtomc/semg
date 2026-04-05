@@ -1,7 +1,4 @@
 """Tests for AST-based metrics computation."""
-import json
-import os
-from pathlib import Path
 
 import pytest
 

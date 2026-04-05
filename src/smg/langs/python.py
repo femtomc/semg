@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import tree_sitter_python as tspython
-from tree_sitter import Language, Node as TSNode, Parser
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
@@ -12,18 +13,66 @@ _LANGUAGE = Language(tspython.language())
 _PARSER = Parser(_LANGUAGE)
 
 # Common builtins to skip (these never resolve to graph nodes)
-_BUILTINS = frozenset({
-    "print", "len", "range", "enumerate", "zip", "map", "filter",
-    "isinstance", "issubclass", "hasattr", "getattr", "setattr", "delattr",
-    "type", "id", "hash", "repr", "str", "int", "float", "bool", "bytes",
-    "list", "dict", "set", "tuple", "frozenset",
-    "sorted", "reversed", "min", "max", "sum", "abs", "round",
-    "open", "iter", "next", "any", "all",
-    "super", "property", "staticmethod", "classmethod",
-    "ValueError", "TypeError", "KeyError", "AttributeError", "RuntimeError",
-    "Exception", "NotImplementedError", "StopIteration", "AssertionError",
-    "OSError", "IOError", "FileNotFoundError", "ImportError",
-})
+_BUILTINS = frozenset(
+    {
+        "print",
+        "len",
+        "range",
+        "enumerate",
+        "zip",
+        "map",
+        "filter",
+        "isinstance",
+        "issubclass",
+        "hasattr",
+        "getattr",
+        "setattr",
+        "delattr",
+        "type",
+        "id",
+        "hash",
+        "repr",
+        "str",
+        "int",
+        "float",
+        "bool",
+        "bytes",
+        "list",
+        "dict",
+        "set",
+        "tuple",
+        "frozenset",
+        "sorted",
+        "reversed",
+        "min",
+        "max",
+        "sum",
+        "abs",
+        "round",
+        "open",
+        "iter",
+        "next",
+        "any",
+        "all",
+        "super",
+        "property",
+        "staticmethod",
+        "classmethod",
+        "ValueError",
+        "TypeError",
+        "KeyError",
+        "AttributeError",
+        "RuntimeError",
+        "Exception",
+        "NotImplementedError",
+        "StopIteration",
+        "AssertionError",
+        "OSError",
+        "IOError",
+        "FileNotFoundError",
+        "ImportError",
+    }
+)
 
 
 class PythonExtractor:
@@ -40,6 +89,7 @@ class PythonExtractor:
         if self.use_native:
             try:
                 from smg._accel import extract_python_native
+
                 result = extract_python_native(source, file_path, module_name)
                 if result is not None:
                     return _convert_native_result(result)
@@ -96,18 +146,20 @@ class PythonExtractor:
         class_name = name_node.text.decode()
         qualified = f"{parent_name}.{class_name}"
 
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.CLASS,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            docstring=self._get_docstring(node),
-            metadata={
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
-            },
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                docstring=self._get_docstring(node),
+                metadata={
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Inheritance
@@ -116,32 +168,38 @@ class PythonExtractor:
             for arg in superclasses.children:
                 if arg.type == "identifier":
                     base_name = arg.text.decode()
-                    out_edges.append(Edge(
-                        source=qualified,
-                        target=base_name,
-                        rel=RelType.INHERITS,
-                        metadata={"unresolved": True},
-                    ))
+                    out_edges.append(
+                        Edge(
+                            source=qualified,
+                            target=base_name,
+                            rel=RelType.INHERITS,
+                            metadata={"unresolved": True},
+                        )
+                    )
                 elif arg.type == "attribute":
                     base_name = arg.text.decode()
-                    out_edges.append(Edge(
-                        source=qualified,
-                        target=base_name,
-                        rel=RelType.INHERITS,
-                        metadata={"unresolved": True},
-                    ))
+                    out_edges.append(
+                        Edge(
+                            source=qualified,
+                            target=base_name,
+                            rel=RelType.INHERITS,
+                            metadata={"unresolved": True},
+                        )
+                    )
 
         # Decorators
         if decorators:
             for dec in decorators:
                 dec_name = self._decorator_name(dec)
                 if dec_name:
-                    out_edges.append(Edge(
-                        source=dec_name,
-                        target=qualified,
-                        rel=RelType.DECORATES,
-                        metadata={"unresolved": True},
-                    ))
+                    out_edges.append(
+                        Edge(
+                            source=dec_name,
+                            target=qualified,
+                            rel=RelType.DECORATES,
+                            metadata={"unresolved": True},
+                        )
+                    )
 
         # Walk class body for methods and nested classes
         body = node.child_by_field_name("body")
@@ -173,19 +231,21 @@ class PythonExtractor:
         # Fused metrics + structure hash in a single AST walk
         meta = compute_metrics_and_hash(node, self.branch_map)
 
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.METHOD if is_method else NodeType.FUNCTION,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            docstring=self._get_docstring(node),
-            metadata={
-                "metrics": meta.metrics.to_dict(),
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": meta.structure_hash,
-            },
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.METHOD if is_method else NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                docstring=self._get_docstring(node),
+                metadata={
+                    "metrics": meta.metrics.to_dict(),
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": meta.structure_hash,
+                },
+            )
+        )
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Decorators
@@ -193,12 +253,14 @@ class PythonExtractor:
             for dec in decorators:
                 dec_name = self._decorator_name(dec)
                 if dec_name:
-                    out_edges.append(Edge(
-                        source=dec_name,
-                        target=qualified,
-                        rel=RelType.DECORATES,
-                        metadata={"unresolved": True},
-                    ))
+                    out_edges.append(
+                        Edge(
+                            source=dec_name,
+                            target=qualified,
+                            rel=RelType.DECORATES,
+                            metadata={"unresolved": True},
+                        )
+                    )
 
         # Extract calls from function body
         body = node.child_by_field_name("body")
@@ -225,12 +287,14 @@ class PythonExtractor:
                     if result is not None:
                         target, resolved = result
                         metadata = {} if resolved else {"unresolved": True}
-                        out_edges.append(Edge(
-                            source=caller_name,
-                            target=target,
-                            rel=RelType.CALLS,
-                            metadata=metadata,
-                        ))
+                        out_edges.append(
+                            Edge(
+                                source=caller_name,
+                                target=target,
+                                rel=RelType.CALLS,
+                                metadata=metadata,
+                            )
+                        )
             for child in node.children:
                 if child.type not in _skip:
                     stack.append(child)
@@ -295,13 +359,15 @@ class PythonExtractor:
             if not var_name.isupper():
                 continue
             qualified = f"{parent_name}.{var_name}"
-            out_nodes.append(Node(
-                name=qualified,
-                type=NodeType.CONSTANT,
-                file=file_path,
-                line=child.start_point[0] + 1,
-                end_line=child.end_point[0] + 1,
-            ))
+            out_nodes.append(
+                Node(
+                    name=qualified,
+                    type=NodeType.CONSTANT,
+                    file=file_path,
+                    line=child.start_point[0] + 1,
+                    end_line=child.end_point[0] + 1,
+                )
+            )
             out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_imports(
@@ -317,22 +383,26 @@ class PythonExtractor:
                 for name_node in child.children:
                     if name_node.type == "dotted_name":
                         target = name_node.text.decode()
-                        out_edges.append(Edge(
-                            source=module_name,
-                            target=target,
-                            rel=RelType.IMPORTS,
-                            metadata={"unresolved": True},
-                        ))
+                        out_edges.append(
+                            Edge(
+                                source=module_name,
+                                target=target,
+                                rel=RelType.IMPORTS,
+                                metadata={"unresolved": True},
+                            )
+                        )
             elif child.type == "import_from_statement":
                 # from X import Y — handles both absolute and relative imports
                 target = self._resolve_import_from(child, module_name)
                 if target is not None:
-                    out_edges.append(Edge(
-                        source=module_name,
-                        target=target,
-                        rel=RelType.IMPORTS,
-                        metadata={"unresolved": True},
-                    ))
+                    out_edges.append(
+                        Edge(
+                            source=module_name,
+                            target=target,
+                            rel=RelType.IMPORTS,
+                            metadata={"unresolved": True},
+                        )
+                    )
             elif child.type == "future_import_statement":
                 pass  # skip `from __future__ import ...`
 
@@ -451,26 +521,30 @@ def _convert_native_result(data: tuple[list, list]) -> ExtractResult:
         if "sh" in r:
             metadata["structure_hash"] = r["sh"]
 
-        nodes.append(Node(
-            name=r["name"],
-            type=NodeType(r["type"]),
-            file=r.get("file"),
-            line=r.get("line"),
-            end_line=r.get("end_line"),
-            docstring=r.get("doc"),
-            metadata=metadata,
-        ))
+        nodes.append(
+            Node(
+                name=r["name"],
+                type=NodeType(r["type"]),
+                file=r.get("file"),
+                line=r.get("line"),
+                end_line=r.get("end_line"),
+                docstring=r.get("doc"),
+                metadata=metadata,
+            )
+        )
 
     for r in raw_edges:
         metadata = {}
         if r.get("unresolved"):
             metadata["unresolved"] = True
-        edges.append(Edge(
-            source=r["src"],
-            target=r["tgt"],
-            rel=RelType(r["rel"]),
-            metadata=metadata,
-        ))
+        edges.append(
+            Edge(
+                source=r["src"],
+                target=r["tgt"],
+                rel=RelType(r["rel"]),
+                metadata=metadata,
+            )
+        )
 
     return ExtractResult(nodes=nodes, edges=edges)
 

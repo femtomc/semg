@@ -3,33 +3,36 @@ from __future__ import annotations
 import sys
 
 import rich_click as click
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
 
 from smg import export, query
-from smg.graph import SemGraph
-from smg.model import Edge
-
 from smg.cli import (
-    main,
-    _load,
-    _resolve_or_exit,
-    _auto_fmt,
-    _type_badge,
-    _rel_style,
-    _output_names,
-    _output_graph,
-    _output_edges,
-    console,
-    err_console,
     EXIT_NOT_FOUND,
     EXIT_VALIDATION,
+    _auto_fmt,
+    _load,
+    _output_edges,
+    _output_graph,
+    _output_names,
+    _rel_style,
+    _resolve_or_exit,
+    _type_badge,
+    console,
+    err_console,
+    main,
 )
 
 
 @main.command()
 @click.argument("name")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def show(name: str, fmt: str | None) -> None:
     """Show a node's details, connections, and metrics.
 
@@ -82,7 +85,13 @@ def show(name: str, fmt: str | None) -> None:
 
 @main.command("list")
 @click.option("--type", "type_", default=None, help="Filter by node type")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def list_nodes(type_: str | None, fmt: str | None) -> None:
     """List all nodes in the graph.
 
@@ -129,7 +138,13 @@ def list_nodes(type_: str | None, fmt: str | None) -> None:
 
 
 @main.command()
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def status(fmt: str | None) -> None:
     """Show graph summary — node/edge counts broken down by type."""
     graph, _root = _load()
@@ -171,6 +186,7 @@ def status(fmt: str | None) -> None:
         edge_table.add_row(_rel_style(r), str(c))
 
     from rich.columns import Columns
+
     console.print(Columns([node_table, edge_table], padding=(0, 4)))
 
 
@@ -192,7 +208,13 @@ main.add_command(query_cmd, "query")
 @query_cmd.command("deps")
 @click.argument("name")
 @click.option("--depth", default=None, type=int, help="Max traversal depth")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json", "mermaid", "dot"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json", "mermaid", "dot"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_deps(name: str, depth: int | None, fmt: str | None) -> None:
     """Transitive dependencies of a node (follows imports/depends_on edges)."""
     graph, _root = _load()
@@ -205,7 +227,13 @@ def query_deps(name: str, depth: int | None, fmt: str | None) -> None:
 @query_cmd.command("callers")
 @click.argument("name")
 @click.option("--depth", default=None, type=int, help="Max traversal depth")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json", "mermaid", "dot"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json", "mermaid", "dot"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_callers(name: str, depth: int | None, fmt: str | None) -> None:
     """What calls this node (transitively, follows incoming calls edges)."""
     graph, _root = _load()
@@ -218,7 +246,13 @@ def query_callers(name: str, depth: int | None, fmt: str | None) -> None:
 @query_cmd.command("path")
 @click.argument("source")
 @click.argument("target")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_path(source: str, target: str, fmt: str | None) -> None:
     """Shortest path between two nodes."""
     graph, _root = _load()
@@ -241,7 +275,13 @@ def query_path(source: str, target: str, fmt: str | None) -> None:
 @query_cmd.command("subgraph")
 @click.argument("name")
 @click.option("--depth", default=2, type=int, help="Number of hops [dim](default: 2)[/]")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json", "mermaid", "dot"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json", "mermaid", "dot"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_subgraph(name: str, depth: int, fmt: str | None) -> None:
     """Neighborhood around a node."""
     graph, _root = _load()
@@ -254,7 +294,13 @@ def query_subgraph(name: str, depth: int, fmt: str | None) -> None:
 @query_cmd.command("incoming")
 @click.argument("name")
 @click.option("--rel", default=None, help="Filter by relationship type")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_incoming(name: str, rel: str | None, fmt: str | None) -> None:
     """Incoming edges to a node. Filter with --rel calls, --rel imports, etc."""
     graph, _root = _load()
@@ -267,7 +313,13 @@ def query_incoming(name: str, rel: str | None, fmt: str | None) -> None:
 @query_cmd.command("outgoing")
 @click.argument("name")
 @click.option("--rel", default=None, help="Filter by relationship type")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def query_outgoing(name: str, rel: str | None, fmt: str | None) -> None:
     """Outgoing edges from a node. Filter with --rel calls, --rel imports, etc."""
     graph, _root = _load()

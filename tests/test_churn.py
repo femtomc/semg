@@ -1,4 +1,5 @@
 """Tests for git-history churn analysis."""
+
 from __future__ import annotations
 
 from smg.churn import _build_file_index, _parse_range, _parse_unified_diff
@@ -61,9 +62,33 @@ diff --git a/b.py b/b.py
 
 def test_build_file_index():
     graph = SemGraph()
-    graph.add_node(Node(name="mod.foo", type=NodeType.FUNCTION, file="src/mod.py", line=10, end_line=20))
-    graph.add_node(Node(name="mod.bar", type=NodeType.FUNCTION, file="src/mod.py", line=25, end_line=30))
-    graph.add_node(Node(name="other.baz", type=NodeType.FUNCTION, file="src/other.py", line=1, end_line=5))
+    graph.add_node(
+        Node(
+            name="mod.foo",
+            type=NodeType.FUNCTION,
+            file="src/mod.py",
+            line=10,
+            end_line=20,
+        )
+    )
+    graph.add_node(
+        Node(
+            name="mod.bar",
+            type=NodeType.FUNCTION,
+            file="src/mod.py",
+            line=25,
+            end_line=30,
+        )
+    )
+    graph.add_node(
+        Node(
+            name="other.baz",
+            type=NodeType.FUNCTION,
+            file="src/other.py",
+            line=1,
+            end_line=5,
+        )
+    )
 
     index = _build_file_index(graph)
     assert "src/mod.py" in index
@@ -91,7 +116,6 @@ diff --git a/a.py b/a.py
 @@ -2,1 +2,2 @@ def foo():
 @@ -8,1 +9,2 @@ def foo():
 """
-    from smg.churn import compute_churn
 
     graph = SemGraph()
     graph.add_node(Node(name="mod.foo", type=NodeType.FUNCTION, file="a.py", line=1, end_line=15))
@@ -101,6 +125,7 @@ diff --git a/a.py b/a.py
     file_index = _build_file_index(graph)
 
     from collections import defaultdict
+
     entity_touches: set[tuple[str, str]] = set()
     for hunk in hunks:
         if hunk.file not in file_index:

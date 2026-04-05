@@ -1,23 +1,21 @@
 """Tests for C and C++ extraction."""
-import json
-import os
-from pathlib import Path
 
 import pytest
 
-from smg.graph import SemGraph
 from smg.model import NodeType, RelType
 from smg.scan import scan_paths
 from smg.storage import init_project, load_graph
 
 try:
     import tree_sitter_c
+
     HAS_C = True
 except ImportError:
     HAS_C = False
 
 try:
     import tree_sitter_cpp
+
     HAS_CPP = True
 except ImportError:
     HAS_CPP = False

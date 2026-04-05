@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 
 from smg.graph import SemGraph
-from smg.model import Edge, RelType
+from smg.model import RelType
 
 
 def transitive_deps(

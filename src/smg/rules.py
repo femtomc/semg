@@ -4,33 +4,38 @@ Users declare rules (path denials, structural invariants) and check
 them against the graph. Violations report the specific edges/nodes
 that offend, inspired by Alloy's counterexample-driven feedback.
 """
+
 from __future__ import annotations
 
 import fnmatch
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Any
 
 from smg.graph import SemGraph
 from smg.model import RelType
 
-_COUPLING_RELS = frozenset({
-    RelType.CALLS.value,
-    RelType.IMPORTS.value,
-    RelType.INHERITS.value,
-    RelType.IMPLEMENTS.value,
-    RelType.DEPENDS_ON.value,
-})
+_COUPLING_RELS = frozenset(
+    {
+        RelType.CALLS.value,
+        RelType.IMPORTS.value,
+        RelType.INHERITS.value,
+        RelType.IMPLEMENTS.value,
+        RelType.DEPENDS_ON.value,
+    }
+)
 
 _DENY_WITH_REL = re.compile(r"^(.+?)\s+-\[(\w+)\]->\s+(.+)$")
 _DENY_ANY_REL = re.compile(r"^(.+?)\s+->\s+(.+)$")
 
-KNOWN_INVARIANTS = frozenset({
-    "no-cycles",
-    "no-dead-code",
-    "no-layering-violations",
-})
+KNOWN_INVARIANTS = frozenset(
+    {
+        "no-cycles",
+        "no-dead-code",
+        "no-layering-violations",
+    }
+)
 
 
 @dataclass
@@ -110,9 +115,12 @@ def parse_deny_pattern(pattern: str) -> tuple[str, str | None, str]:
 
 
 def check_deny(
-    rule: Rule, graph: SemGraph, scope: str | None = None,
+    rule: Rule,
+    graph: SemGraph,
+    scope: str | None = None,
 ) -> Violation | None:
     """Check a path denial rule against the graph."""
+    assert rule.pattern is not None, f"deny rule {rule.name!r} has no pattern"
     source_glob, rel, target_glob = parse_deny_pattern(rule.pattern)
 
     # When scoped, only consider edges whose source is within the scope.
@@ -131,11 +139,13 @@ def check_deny(
             if edge.source != scope and not edge.source.startswith(scope_prefix):
                 continue
         if fnmatch.fnmatch(edge.source, source_glob) and fnmatch.fnmatch(edge.target, target_glob):
-            offending.append({
-                "source": edge.source,
-                "rel": edge.rel.value,
-                "target": edge.target,
-            })
+            offending.append(
+                {
+                    "source": edge.source,
+                    "rel": edge.rel.value,
+                    "target": edge.target,
+                }
+            )
     if offending:
         return Violation(
             rule_name=rule.name,

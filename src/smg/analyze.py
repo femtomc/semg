@@ -3,6 +3,7 @@
 Extracted from cli/explore.py to separate computation from presentation.
 This module is purely functional — no CLI, no rendering, no I/O.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -150,8 +151,7 @@ def filter_to_delta(result: AnalysisResult, delta_names: set[str], graph: SemGra
     result.hotspots = [h for h in result.hotspots if h["name"] in delta_names]
     result.dead_code = [n for n in result.dead_code if n in delta_names]
     result.layering_violations = [
-        v for v in result.layering_violations
-        if v["source"] in delta_names or v["target"] in delta_names
+        v for v in result.layering_violations if v["source"] in delta_names or v["target"] in delta_names
     ]
     result.god_classes = [g for g in result.god_classes if g["name"] in delta_names]
     result.feature_envy = [e for e in result.feature_envy if e["method"] in delta_names]
@@ -171,7 +171,7 @@ def _synthesize_hotspots(graph: SemGraph, r: AnalysisResult) -> list[dict]:
         reasons: list[str] = []
         w = r.wmc.get(name, 0)
         c = r.cbo.get(name, 0)
-        l = r.lcom4.get(name, 0)
+        lcom = r.lcom4.get(name, 0)
         rf = r.rfc.get(name, 0)
         b = r.betweenness.get(name, 0.0)
         p = r.pagerank.get(name, 0.0)
@@ -181,9 +181,9 @@ def _synthesize_hotspots(graph: SemGraph, r: AnalysisResult) -> list[dict]:
         if c > 5:
             score += c
             reasons.append(f"high coupling (CBO={c})")
-        if l > 1:
-            score += l * 3
-            reasons.append(f"low cohesion (LCOM4={l})")
+        if lcom > 1:
+            score += lcom * 3
+            reasons.append(f"low cohesion (LCOM4={lcom})")
         if rf > 20:
             score += rf / 5
             reasons.append(f"large response set (RFC={rf})")
@@ -199,15 +199,28 @@ def _synthesize_hotspots(graph: SemGraph, r: AnalysisResult) -> list[dict]:
                 score += churn_count / 5
                 reasons.append(f"high churn ({churn_count} touches)")
         if reasons:
-            hotspots.append({"name": name, "type": "class", "score": round(score, 2), "reasons": reasons})
+            hotspots.append(
+                {
+                    "name": name,
+                    "type": "class",
+                    "score": round(score, 2),
+                    "reasons": reasons,
+                }
+            )
 
     # Module-level hotspots (high distance from main sequence)
     for name, m in r.martin.items():
         if m["distance"] > 0.7:
-            hotspots.append({
-                "name": name, "type": "module", "score": round(m["distance"] * 5, 2),
-                "reasons": [f"far from main sequence (D={m['distance']}, I={m['instability']}, A={m['abstractness']})"],
-            })
+            hotspots.append(
+                {
+                    "name": name,
+                    "type": "module",
+                    "score": round(m["distance"] * 5, 2),
+                    "reasons": [
+                        f"far from main sequence (D={m['distance']}, I={m['instability']}, A={m['abstractness']})"
+                    ],
+                }
+            )
 
     # Function-level churn hotspots (high churn + high complexity)
     if r.churn:
@@ -228,7 +241,14 @@ def _synthesize_hotspots(graph: SemGraph, r: AnalysisResult) -> list[dict]:
                 score += cc / 5
                 reasons.append(f"high complexity (CC={cc})")
             if score > 2.0:
-                hotspots.append({"name": name, "type": node.type.value, "score": round(score, 2), "reasons": reasons})
+                hotspots.append(
+                    {
+                        "name": name,
+                        "type": node.type.value,
+                        "score": round(score, 2),
+                        "reasons": reasons,
+                    }
+                )
 
     hotspots.sort(key=lambda h: h["score"], reverse=True)
     return hotspots

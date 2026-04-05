@@ -59,7 +59,7 @@ def to_mermaid(graph: SemGraph) -> str:
     for node in graph.all_nodes():
         mid = _mermaid_id(node.name)
         label = f"{node.name} ({node.type.value})"
-        lines.append(f"    {mid}[\"{label}\"]")
+        lines.append(f'    {mid}["{label}"]')
 
     for edge in graph.all_edges():
         src = _mermaid_id(edge.source)
@@ -130,18 +130,28 @@ def to_dsm(graph: SemGraph, level: str = "module") -> str:
     Non-zero cells indicate dependencies; the diagonal is always 0.
     """
     from collections import defaultdict
+
     from smg.model import NodeType, RelType
 
-    coupling_rels = frozenset({
-        RelType.CALLS.value, RelType.IMPORTS.value, RelType.INHERITS.value,
-        RelType.IMPLEMENTS.value, RelType.DEPENDS_ON.value,
-    })
+    coupling_rels = frozenset(
+        {
+            RelType.CALLS.value,
+            RelType.IMPORTS.value,
+            RelType.INHERITS.value,
+            RelType.IMPLEMENTS.value,
+            RelType.DEPENDS_ON.value,
+        }
+    )
 
     # Select nodes at the requested granularity
     if level == "module":
         target_types = {NodeType.MODULE.value, NodeType.PACKAGE.value}
     elif level == "class":
-        target_types = {NodeType.MODULE.value, NodeType.PACKAGE.value, NodeType.CLASS.value}
+        target_types = {
+            NodeType.MODULE.value,
+            NodeType.PACKAGE.value,
+            NodeType.CLASS.value,
+        }
     else:  # "all"
         target_types = None
 

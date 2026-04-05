@@ -4,76 +4,212 @@ Handles .c, .h, .cpp, .hpp, .cc, .cxx, .hxx, .metal files.
 C structs map to CLASS nodes, C++ classes map directly.
 Metal Shading Language (.metal) is parsed as C++ since it shares the syntax.
 """
+
 from __future__ import annotations
 
-from tree_sitter import Language, Node as TSNode, Parser
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
 from smg.metrics import BranchMap, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
-_BUILTINS = frozenset({
-    # C standard library
-    "printf", "fprintf", "sprintf", "snprintf", "scanf", "sscanf", "vprintf",
-    "vfprintf", "vsprintf", "vsnprintf",
-    "malloc", "calloc", "realloc", "free", "aligned_alloc",
-    "memcpy", "memset", "memmove", "memcmp",
-    "strlen", "strcpy", "strncpy", "strcmp", "strncmp", "strcat", "strncat",
-    "strstr", "strchr", "strrchr", "strtok", "strtol", "strtoul", "strtod",
-    "atoi", "atol", "atof",
-    "sizeof", "assert", "exit", "abort", "atexit",
-    "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "fseek", "ftell",
-    "fflush", "feof", "ferror", "rewind", "remove", "rename", "tmpfile",
-    "getchar", "putchar", "puts", "getline",
-    "isalpha", "isdigit", "isalnum", "isspace", "isupper", "islower",
-    "toupper", "tolower",
-    "abs", "labs", "div", "ldiv",
-    "qsort", "bsearch",
-    "time", "clock", "difftime", "mktime", "strftime",
-    "rand", "srand",
-    "setjmp", "longjmp",
-    "signal", "raise",
-    "perror", "strerror", "errno",
-    # C++ keywords / operators
-    "static_cast", "dynamic_cast", "reinterpret_cast", "const_cast",
-    "throw", "new", "delete",
-    # C++ stdlib commonly called as bare identifiers
-    "std", "cout", "cerr", "clog", "endl",
-    "make_shared", "make_unique", "move", "forward", "swap",
-    "begin", "end", "rbegin", "rend", "size", "empty",
-    "push_back", "pop_back", "push_front", "pop_front",
-    "emplace", "emplace_back", "insert", "erase", "clear", "find",
-    "sort", "stable_sort", "lower_bound", "upper_bound",
-    "min", "max", "clamp", "accumulate",
-    "to_string", "stoi", "stol", "stoul", "stof", "stod",
-    "get", "ref", "cref",
-    # LLVM/compiler infrastructure common helpers
-    "llvm_unreachable", "report_fatal_error",
-    "isa", "cast", "dyn_cast", "dyn_cast_or_null", "cast_or_null",
-    "dbgs", "errs", "outs",
-})
+_BUILTINS = frozenset(
+    {
+        # C standard library
+        "printf",
+        "fprintf",
+        "sprintf",
+        "snprintf",
+        "scanf",
+        "sscanf",
+        "vprintf",
+        "vfprintf",
+        "vsprintf",
+        "vsnprintf",
+        "malloc",
+        "calloc",
+        "realloc",
+        "free",
+        "aligned_alloc",
+        "memcpy",
+        "memset",
+        "memmove",
+        "memcmp",
+        "strlen",
+        "strcpy",
+        "strncpy",
+        "strcmp",
+        "strncmp",
+        "strcat",
+        "strncat",
+        "strstr",
+        "strchr",
+        "strrchr",
+        "strtok",
+        "strtol",
+        "strtoul",
+        "strtod",
+        "atoi",
+        "atol",
+        "atof",
+        "sizeof",
+        "assert",
+        "exit",
+        "abort",
+        "atexit",
+        "fopen",
+        "fclose",
+        "fread",
+        "fwrite",
+        "fgets",
+        "fputs",
+        "fseek",
+        "ftell",
+        "fflush",
+        "feof",
+        "ferror",
+        "rewind",
+        "remove",
+        "rename",
+        "tmpfile",
+        "getchar",
+        "putchar",
+        "puts",
+        "getline",
+        "isalpha",
+        "isdigit",
+        "isalnum",
+        "isspace",
+        "isupper",
+        "islower",
+        "toupper",
+        "tolower",
+        "abs",
+        "labs",
+        "div",
+        "ldiv",
+        "qsort",
+        "bsearch",
+        "time",
+        "clock",
+        "difftime",
+        "mktime",
+        "strftime",
+        "rand",
+        "srand",
+        "setjmp",
+        "longjmp",
+        "signal",
+        "raise",
+        "perror",
+        "strerror",
+        "errno",
+        # C++ keywords / operators
+        "static_cast",
+        "dynamic_cast",
+        "reinterpret_cast",
+        "const_cast",
+        "throw",
+        "new",
+        "delete",
+        # C++ stdlib commonly called as bare identifiers
+        "std",
+        "cout",
+        "cerr",
+        "clog",
+        "endl",
+        "make_shared",
+        "make_unique",
+        "move",
+        "forward",
+        "swap",
+        "begin",
+        "end",
+        "rbegin",
+        "rend",
+        "size",
+        "empty",
+        "push_back",
+        "pop_back",
+        "push_front",
+        "pop_front",
+        "emplace",
+        "emplace_back",
+        "insert",
+        "erase",
+        "clear",
+        "find",
+        "sort",
+        "stable_sort",
+        "lower_bound",
+        "upper_bound",
+        "min",
+        "max",
+        "clamp",
+        "accumulate",
+        "to_string",
+        "stoi",
+        "stol",
+        "stoul",
+        "stof",
+        "stod",
+        "get",
+        "ref",
+        "cref",
+        # LLVM/compiler infrastructure common helpers
+        "llvm_unreachable",
+        "report_fatal_error",
+        "isa",
+        "cast",
+        "dyn_cast",
+        "dyn_cast_or_null",
+        "cast_or_null",
+        "dbgs",
+        "errs",
+        "outs",
+    }
+)
 
 # Prefixes for identifiers that are almost certainly unresolvable
 # (framework macros, compiler intrinsics, etc.)
 _SKIP_PREFIXES = (
-    "__builtin_", "__atomic_", "__sync_", "_mm", "__",
-    "llvm_", "LLVM_",
-    "NS_", "CF_", "CG_",  # Apple frameworks
+    "__builtin_",
+    "__atomic_",
+    "__sync_",
+    "_mm",
+    "__",
+    "llvm_",
+    "LLVM_",
+    "NS_",
+    "CF_",
+    "CG_",  # Apple frameworks
 )
 
 C_BRANCH_MAP = BranchMap(
-    branch_nodes=frozenset({
-        "if_statement", "else_clause",
-        "for_statement", "while_statement", "do_statement",
-        "switch_statement", "case_statement",
-        "conditional_expression",  # ternary
-    }),
+    branch_nodes=frozenset(
+        {
+            "if_statement",
+            "else_clause",
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "switch_statement",
+            "case_statement",
+            "conditional_expression",  # ternary
+        }
+    ),
     boolean_operators=frozenset({"binary_expression"}),
-    nesting_nodes=frozenset({
-        "if_statement", "for_statement", "while_statement", "do_statement",
-        "switch_statement",
-    }),
+    nesting_nodes=frozenset(
+        {
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "do_statement",
+            "switch_statement",
+        }
+    ),
     loop_nodes=frozenset({"for_statement", "while_statement", "do_statement"}),
     function_nodes=frozenset({"function_definition"}),
     logical_operator_tokens=frozenset({"&&", "||"}),
@@ -83,7 +219,14 @@ C_BRANCH_MAP = BranchMap(
 class _CExtractorBase:
     """Shared extraction logic for C and C++."""
 
-    def _extract(self, parser: Parser, source: bytes, file_path: str, module_name: str, is_cpp: bool) -> ExtractResult:
+    def _extract(
+        self,
+        parser: Parser,
+        source: bytes,
+        file_path: str,
+        module_name: str,
+        is_cpp: bool,
+    ) -> ExtractResult:
         tree = parser.parse(source)
         nodes: list[Node] = []
         edges: list[Edge] = []
@@ -101,10 +244,16 @@ class _CExtractorBase:
         edges: list[Edge],
         is_cpp: bool,
     ) -> None:
-        _TRANSPARENT = frozenset({
-            "preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif",
-            "linkage_specification", "declaration_list",
-        })
+        _TRANSPARENT = frozenset(
+            {
+                "preproc_ifdef",
+                "preproc_if",
+                "preproc_else",
+                "preproc_elif",
+                "linkage_specification",
+                "declaration_list",
+            }
+        )
         # Stack entries: (container_node, parent_name)
         stack: list[tuple[TSNode, str]] = [(root, parent_name)]
         while stack:
@@ -147,7 +296,15 @@ class _CExtractorBase:
         ns_name = name_node.text.decode()
         qualified = f"{parent_name}.{ns_name}"
 
-        nodes.append(Node(name=qualified, type=NodeType.PACKAGE, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.PACKAGE,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         body = _find_child(node, "declaration_list")
@@ -169,14 +326,19 @@ class _CExtractorBase:
         class_name = name_node.text.decode()
         qualified = f"{parent_name}.{class_name}"
 
-        nodes.append(Node(
-            name=qualified, type=NodeType.CLASS, file=file_path,
-            line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
-            metadata={
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
-            },
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Inheritance
@@ -184,10 +346,14 @@ class _CExtractorBase:
         if base_clause is not None:
             for child in base_clause.children:
                 if child.type == "type_identifier":
-                    edges.append(Edge(
-                        source=qualified, target=child.text.decode(),
-                        rel=RelType.INHERITS, metadata={"unresolved": True},
-                    ))
+                    edges.append(
+                        Edge(
+                            source=qualified,
+                            target=child.text.decode(),
+                            rel=RelType.INHERITS,
+                            metadata={"unresolved": True},
+                        )
+                    )
 
         # Methods in field_declaration_list
         body = _find_child(node, "field_declaration_list")
@@ -216,14 +382,19 @@ class _CExtractorBase:
         struct_name = name_node.text.decode()
         qualified = f"{parent_name}.{struct_name}"
 
-        nodes.append(Node(
-            name=qualified, type=NodeType.CLASS, file=file_path,
-            line=node.start_point[0] + 1, end_line=node.end_point[0] + 1,
-            metadata={
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
-            },
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_define(
@@ -242,7 +413,15 @@ class _CExtractorBase:
         if not name.isupper():
             return
         qualified = f"{parent_name}.{name}"
-        nodes.append(Node(name=qualified, type=NodeType.CONSTANT, file=file_path, line=node.start_point[0] + 1, end_line=node.end_point[0] + 1))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CONSTANT,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_function(
@@ -263,18 +442,20 @@ class _CExtractorBase:
         is_method = class_name is not None
         meta = compute_metrics_and_hash(node, C_BRANCH_MAP)
 
-        nodes.append(Node(
-            name=qualified,
-            type=NodeType.METHOD if is_method else NodeType.FUNCTION,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            metadata={
-                "metrics": meta.metrics.to_dict(),
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": meta.structure_hash,
-            },
-        ))
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.METHOD if is_method else NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "metrics": meta.metrics.to_dict(),
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": meta.structure_hash,
+                },
+            )
+        )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Extract calls
@@ -298,7 +479,9 @@ class _CExtractorBase:
             # Could be a destructor or special function
             destr = _find_child(decl, "destructor_name")
             if destr is not None:
-                return f"~{_find_child(destr, 'identifier').text.decode()}" if _find_child(destr, "identifier") else None
+                return (
+                    f"~{_find_child(destr, 'identifier').text.decode()}" if _find_child(destr, "identifier") else None
+                )
             return None
         return name.text.decode()
 
@@ -319,12 +502,16 @@ class _CExtractorBase:
                         # Strip .h/.hpp extension, convert / to .
                         for ext in (".h", ".hpp", ".hxx"):
                             if target.endswith(ext):
-                                target = target[:-len(ext)]
+                                target = target[: -len(ext)]
                         target = target.replace("/", ".")
-                        edges.append(Edge(
-                            source=module_name, target=target,
-                            rel=RelType.IMPORTS, metadata={"unresolved": True},
-                        ))
+                        edges.append(
+                            Edge(
+                                source=module_name,
+                                target=target,
+                                rel=RelType.IMPORTS,
+                                metadata={"unresolved": True},
+                            )
+                        )
 
     def _extract_calls(
         self,
@@ -340,10 +527,14 @@ class _CExtractorBase:
                 target = self._call_target(node, class_name)
                 if target is not None:
                     name, resolved = target
-                    edges.append(Edge(
-                        source=caller_name, target=name, rel=RelType.CALLS,
-                        metadata={} if resolved else {"unresolved": True},
-                    ))
+                    edges.append(
+                        Edge(
+                            source=caller_name,
+                            target=name,
+                            rel=RelType.CALLS,
+                            metadata={} if resolved else {"unresolved": True},
+                        )
+                    )
             for child in node.children:
                 if child.type != "function_definition":
                     stack.append(child)
@@ -401,6 +592,7 @@ class CExtractor(_CExtractorBase):
 
     def __init__(self) -> None:
         import tree_sitter_c as tsc
+
         self._parser = Parser(Language(tsc.language()))
 
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:
@@ -414,6 +606,7 @@ class CHeaderExtractor(_CExtractorBase):
     def __init__(self) -> None:
         # Use C parser for .h files by default
         import tree_sitter_c as tsc
+
         self._parser = Parser(Language(tsc.language()))
 
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:
@@ -426,6 +619,7 @@ class CppExtractor(_CExtractorBase):
 
     def __init__(self) -> None:
         import tree_sitter_cpp as tscpp
+
         self._parser = Parser(Language(tscpp.language()))
 
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:
@@ -438,6 +632,7 @@ class CppHeaderExtractor(_CExtractorBase):
 
     def __init__(self) -> None:
         import tree_sitter_cpp as tscpp
+
         self._parser = Parser(Language(tscpp.language()))
 
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:

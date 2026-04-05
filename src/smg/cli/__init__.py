@@ -5,14 +5,21 @@ from pathlib import Path
 
 import rich_click as click
 from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
+from rich.panel import Panel as Panel
+from rich.table import Table as Table
+from rich.text import Text as Text
 
-from smg import export, query
-from smg.graph import NodeNotFoundError, SemGraph
-from smg.model import Edge, Node, NodeType, RelType
-from smg.storage import find_root, init_project, load_graph, save_graph
+from smg import export
+from smg import query as query
+from smg.graph import NodeNotFoundError as NodeNotFoundError
+from smg.graph import SemGraph
+from smg.model import Edge
+from smg.model import Node as Node
+from smg.model import NodeType as NodeType
+from smg.model import RelType as RelType
+from smg.storage import find_root, load_graph
+from smg.storage import init_project as init_project
+from smg.storage import save_graph as save_graph
 
 # Exit codes
 EXIT_OK = 0
@@ -32,10 +39,39 @@ click.rich_click.STYLE_SWITCH = "bold green"
 click.rich_click.STYLE_METAVAR = "dim"
 click.rich_click.COMMAND_GROUPS = {
     "smg": [
-        {"name": "Explore", "commands": ["about", "usages", "impact", "between", "overview", "diff", "analyze", "context", "blame"]},
+        {
+            "name": "Explore",
+            "commands": [
+                "about",
+                "usages",
+                "impact",
+                "between",
+                "overview",
+                "diff",
+                "analyze",
+                "context",
+                "blame",
+            ],
+        },
         {"name": "Enforce", "commands": ["rule", "check"]},
-        {"name": "Inspect", "commands": ["show", "list", "status", "query", "validate"]},
-        {"name": "Mutate", "commands": ["init", "add", "link", "rm", "unlink", "update", "scan", "watch", "batch"]},
+        {
+            "name": "Inspect",
+            "commands": ["show", "list", "status", "query", "validate"],
+        },
+        {
+            "name": "Mutate",
+            "commands": [
+                "init",
+                "add",
+                "link",
+                "rm",
+                "unlink",
+                "update",
+                "scan",
+                "watch",
+                "batch",
+            ],
+        },
         {"name": "Export", "commands": ["export"]},
     ],
 }
@@ -77,11 +113,13 @@ def _scope_graph(graph: SemGraph, module_filter: str, fmt: str | None = None) ->
     if len(scoped) == 0 and len(graph) > 0:
         # Suggest alternatives via suffix matching
         suffix = module_filter.rsplit(".", 1)[-1]
-        candidates = sorted({
-            n.name.rsplit("." + suffix, 1)[0] + "." + suffix
-            for n in graph.all_nodes()
-            if ("." + suffix + ".") in n.name or n.name.endswith("." + suffix)
-        })
+        candidates = sorted(
+            {
+                n.name.rsplit("." + suffix, 1)[0] + "." + suffix
+                for n in graph.all_nodes()
+                if ("." + suffix + ".") in n.name or n.name.endswith("." + suffix)
+            }
+        )
         msg = f"no nodes matching [bold]{module_filter}[/]"
         if candidates:
             msg += ". Did you mean:"
@@ -238,4 +276,4 @@ def _output_edges(edges: list[Edge], fmt: str) -> None:
 
 
 # Import submodules to register commands on `main`
-from smg.cli import explore, enforce, inspect, mutate, _export  # noqa: F401, E402
+from smg.cli import _export, enforce, explore, inspect, mutate  # noqa: F401, E402

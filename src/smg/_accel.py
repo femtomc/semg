@@ -3,10 +3,10 @@
 Loads libsmg_accel.so/.dylib if available. Falls back gracefully to None
 if the library is not built or not found.
 """
+
 from __future__ import annotations
 
 import ctypes
-import sys
 from pathlib import Path
 
 _lib = None
@@ -35,36 +35,36 @@ def _load() -> ctypes.CDLL | None:
         if _lib is not None:
             # Set up function signatures
             _lib.smg_betweenness.argtypes = [
-                ctypes.c_uint32,                          # n
-                ctypes.POINTER(ctypes.c_uint32),          # offsets
-                ctypes.POINTER(ctypes.c_uint32),          # targets
-                ctypes.POINTER(ctypes.c_double),          # out_bc
-                ctypes.c_uint32,                          # max_sources
-                ctypes.c_uint64,                          # seed
+                ctypes.c_uint32,  # n
+                ctypes.POINTER(ctypes.c_uint32),  # offsets
+                ctypes.POINTER(ctypes.c_uint32),  # targets
+                ctypes.POINTER(ctypes.c_double),  # out_bc
+                ctypes.c_uint32,  # max_sources
+                ctypes.c_uint64,  # seed
             ]
             _lib.smg_betweenness.restype = None
 
             _lib.smg_hits.argtypes = [
-                ctypes.c_uint32,                          # n
-                ctypes.POINTER(ctypes.c_uint32),          # fwd_offsets
-                ctypes.POINTER(ctypes.c_uint32),          # fwd_targets
-                ctypes.POINTER(ctypes.c_uint32),          # rev_offsets
-                ctypes.POINTER(ctypes.c_uint32),          # rev_targets
-                ctypes.POINTER(ctypes.c_double),          # out_hub
-                ctypes.POINTER(ctypes.c_double),          # out_auth
-                ctypes.c_uint32,                          # iterations
+                ctypes.c_uint32,  # n
+                ctypes.POINTER(ctypes.c_uint32),  # fwd_offsets
+                ctypes.POINTER(ctypes.c_uint32),  # fwd_targets
+                ctypes.POINTER(ctypes.c_uint32),  # rev_offsets
+                ctypes.POINTER(ctypes.c_uint32),  # rev_targets
+                ctypes.POINTER(ctypes.c_double),  # out_hub
+                ctypes.POINTER(ctypes.c_double),  # out_auth
+                ctypes.c_uint32,  # iterations
             ]
             _lib.smg_hits.restype = None
 
             _lib.smg_extract_python.argtypes = [
-                ctypes.c_char_p,                          # source
-                ctypes.c_uint32,                          # source_len
-                ctypes.c_char_p,                          # module_name
-                ctypes.c_uint32,                          # module_name_len
-                ctypes.c_char_p,                          # file_path
-                ctypes.c_uint32,                          # file_path_len
-                ctypes.c_char_p,                          # out_buf
-                ctypes.c_uint32,                          # out_buf_cap
+                ctypes.c_char_p,  # source
+                ctypes.c_uint32,  # source_len
+                ctypes.c_char_p,  # module_name
+                ctypes.c_uint32,  # module_name_len
+                ctypes.c_char_p,  # file_path
+                ctypes.c_uint32,  # file_path_len
+                ctypes.c_char_p,  # out_buf
+                ctypes.c_uint32,  # out_buf_cap
             ]
             _lib.smg_extract_python.restype = ctypes.c_uint32
     return _lib
@@ -168,13 +168,17 @@ def _call_extract_python(lib, source: bytes, file_path: str, module_name: str) -
     fp_bytes = file_path.encode()
 
     actual_len = lib.smg_extract_python(
-        source, len(source),
-        mod_bytes, len(mod_bytes),
-        fp_bytes, len(fp_bytes),
-        buf, buf_cap,
+        source,
+        len(source),
+        mod_bytes,
+        len(mod_bytes),
+        fp_bytes,
+        len(fp_bytes),
+        buf,
+        buf_cap,
     )
 
-    return buf.raw[:min(actual_len, buf_cap)]
+    return buf.raw[: min(actual_len, buf_cap)]
 
 
 def _parse_extract_output(raw: bytes) -> tuple[list, list]:
@@ -200,7 +204,9 @@ def _parse_extract_output(raw: bytes) -> tuple[list, list]:
 
 
 def _build_directed_csr(
-    adj: dict[str, set[str]], node_list: list[str], idx: dict[str, int],
+    adj: dict[str, set[str]],
+    node_list: list[str],
+    idx: dict[str, int],
 ) -> tuple:
     """Build CSR arrays from a directed adjacency dict."""
     n = len(node_list)
@@ -246,10 +252,15 @@ def hits_native(
     out_hub = (ctypes.c_double * n)()
     out_auth = (ctypes.c_double * n)()
 
-    lib.smg_hits(n, fwd_offsets, fwd_targets, rev_offsets, rev_targets,
-                 out_hub, out_auth, iterations)
+    lib.smg_hits(
+        n,
+        fwd_offsets,
+        fwd_targets,
+        rev_offsets,
+        rev_targets,
+        out_hub,
+        out_auth,
+        iterations,
+    )
 
-    return {
-        node_list[i]: {"hub": round(out_hub[i], 6), "authority": round(out_auth[i], 6)}
-        for i in range(n)
-    }
+    return {node_list[i]: {"hub": round(out_hub[i], 6), "authority": round(out_auth[i], 6)} for i in range(n)}

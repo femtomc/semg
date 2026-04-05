@@ -24,7 +24,13 @@ def test_rel_type_custom():
 
 
 def test_node_roundtrip():
-    node = Node(name="app.main", type=NodeType.FUNCTION, file="app.py", line=1, docstring="entry")
+    node = Node(
+        name="app.main",
+        type=NodeType.FUNCTION,
+        file="app.py",
+        line=1,
+        docstring="entry",
+    )
     d = node.to_dict()
     assert d["kind"] == "node"
     restored = Node.from_dict(d)

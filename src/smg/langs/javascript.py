@@ -5,9 +5,11 @@ are nearly identical — classes, functions, methods, calls, and imports
 use the same node types. The main difference is TS has type annotations,
 interface declarations, and uses type_identifier for class names.
 """
+
 from __future__ import annotations
 
-from tree_sitter import Language, Node as TSNode, Parser
+from tree_sitter import Language, Parser
+from tree_sitter import Node as TSNode
 
 from smg.hashing import content_hash, structure_hash
 from smg.langs import ExtractResult, register
@@ -15,16 +17,50 @@ from smg.metrics import JS_BRANCH_MAP, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
 # Common JS/TS builtins to skip
-_BUILTINS = frozenset({
-    "console", "require", "setTimeout", "setInterval", "clearTimeout",
-    "clearInterval", "Promise", "JSON", "Math", "Object", "Array",
-    "String", "Number", "Boolean", "Date", "RegExp", "Error",
-    "Map", "Set", "WeakMap", "WeakSet", "Symbol", "Proxy", "Reflect",
-    "parseInt", "parseFloat", "isNaN", "isFinite", "encodeURI",
-    "decodeURI", "encodeURIComponent", "decodeURIComponent",
-    "fetch", "alert", "confirm", "prompt",
-    "TypeError", "RangeError", "ReferenceError", "SyntaxError",
-})
+_BUILTINS = frozenset(
+    {
+        "console",
+        "require",
+        "setTimeout",
+        "setInterval",
+        "clearTimeout",
+        "clearInterval",
+        "Promise",
+        "JSON",
+        "Math",
+        "Object",
+        "Array",
+        "String",
+        "Number",
+        "Boolean",
+        "Date",
+        "RegExp",
+        "Error",
+        "Map",
+        "Set",
+        "WeakMap",
+        "WeakSet",
+        "Symbol",
+        "Proxy",
+        "Reflect",
+        "parseInt",
+        "parseFloat",
+        "isNaN",
+        "isFinite",
+        "encodeURI",
+        "decodeURI",
+        "encodeURIComponent",
+        "decodeURIComponent",
+        "fetch",
+        "alert",
+        "confirm",
+        "prompt",
+        "TypeError",
+        "RangeError",
+        "ReferenceError",
+        "SyntaxError",
+    }
+)
 
 
 def _get_class_name(node: TSNode) -> str | None:
@@ -88,18 +124,20 @@ class _JSExtractorBase:
             return
         qualified = f"{parent_name}.{class_name}"
 
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.CLASS,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            docstring=self._get_jsdoc(node),
-            metadata={
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": structure_hash(node),
-            },
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                docstring=self._get_jsdoc(node),
+                metadata={
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Inheritance: extends clause
@@ -109,21 +147,25 @@ class _JSExtractorBase:
                 if child.type == "extends_clause":
                     for ident in child.children:
                         if ident.type in ("identifier", "type_identifier"):
-                            out_edges.append(Edge(
-                                source=qualified,
-                                target=ident.text.decode(),
-                                rel=RelType.INHERITS,
-                                metadata={"unresolved": True},
-                            ))
+                            out_edges.append(
+                                Edge(
+                                    source=qualified,
+                                    target=ident.text.decode(),
+                                    rel=RelType.INHERITS,
+                                    metadata={"unresolved": True},
+                                )
+                            )
                 elif child.type == "implements_clause":
                     for ident in child.children:
                         if ident.type in ("identifier", "type_identifier"):
-                            out_edges.append(Edge(
-                                source=qualified,
-                                target=ident.text.decode(),
-                                rel=RelType.IMPLEMENTS,
-                                metadata={"unresolved": True},
-                            ))
+                            out_edges.append(
+                                Edge(
+                                    source=qualified,
+                                    target=ident.text.decode(),
+                                    rel=RelType.IMPLEMENTS,
+                                    metadata={"unresolved": True},
+                                )
+                            )
 
         # Walk class body for methods
         body = node.child_by_field_name("body")
@@ -149,19 +191,21 @@ class _JSExtractorBase:
 
         meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
 
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.METHOD,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            docstring=self._get_jsdoc(node),
-            metadata={
-                "metrics": meta.metrics.to_dict(),
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": meta.structure_hash,
-            },
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.METHOD,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                docstring=self._get_jsdoc(node),
+                metadata={
+                    "metrics": meta.metrics.to_dict(),
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": meta.structure_hash,
+                },
+            )
+        )
         out_edges.append(Edge(source=class_name, target=qualified, rel=RelType.CONTAINS))
 
         # Extract calls from method body
@@ -186,19 +230,21 @@ class _JSExtractorBase:
 
         meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
 
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.FUNCTION,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-            docstring=self._get_jsdoc(node),
-            metadata={
-                "metrics": meta.metrics.to_dict(),
-                "content_hash": content_hash(source, node.start_byte, node.end_byte),
-                "structure_hash": meta.structure_hash,
-            },
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                docstring=self._get_jsdoc(node),
+                metadata={
+                    "metrics": meta.metrics.to_dict(),
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": meta.structure_hash,
+                },
+            )
+        )
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
         # Extract calls from function body
@@ -225,13 +271,15 @@ class _JSExtractorBase:
             if not var_name.isupper():
                 continue
             qualified = f"{parent_name}.{var_name}"
-            out_nodes.append(Node(
-                name=qualified,
-                type=NodeType.CONSTANT,
-                file=file_path,
-                line=child.start_point[0] + 1,
-                end_line=child.end_point[0] + 1,
-            ))
+            out_nodes.append(
+                Node(
+                    name=qualified,
+                    type=NodeType.CONSTANT,
+                    file=file_path,
+                    line=child.start_point[0] + 1,
+                    end_line=child.end_point[0] + 1,
+                )
+            )
             out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_interface(
@@ -248,13 +296,15 @@ class _JSExtractorBase:
             return
         iface_name = name_node.text.decode()
         qualified = f"{parent_name}.{iface_name}"
-        out_nodes.append(Node(
-            name=qualified,
-            type=NodeType.INTERFACE,
-            file=file_path,
-            line=node.start_point[0] + 1,
-            end_line=node.end_point[0] + 1,
-        ))
+        out_nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.INTERFACE,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+            )
+        )
         out_edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_imports(
@@ -271,12 +321,14 @@ class _JSExtractorBase:
                 if source is not None:
                     target = self._import_source_to_module(source)
                     if target:
-                        out_edges.append(Edge(
-                            source=module_name,
-                            target=target,
-                            rel=RelType.IMPORTS,
-                            metadata={"unresolved": True},
-                        ))
+                        out_edges.append(
+                            Edge(
+                                source=module_name,
+                                target=target,
+                                rel=RelType.IMPORTS,
+                                metadata={"unresolved": True},
+                            )
+                        )
 
     def _import_source_to_module(self, source_node: TSNode) -> str | None:
         """Convert an import source string node to a module name.
@@ -317,12 +369,14 @@ class _JSExtractorBase:
                     if result is not None:
                         target, resolved = result
                         metadata = {} if resolved else {"unresolved": True}
-                        out_edges.append(Edge(
-                            source=caller_name,
-                            target=target,
-                            rel=RelType.CALLS,
-                            metadata=metadata,
-                        ))
+                        out_edges.append(
+                            Edge(
+                                source=caller_name,
+                                target=target,
+                                rel=RelType.CALLS,
+                                metadata=metadata,
+                            )
+                        )
             for child in node.children:
                 if child.type not in _skip:
                     stack.append(child)

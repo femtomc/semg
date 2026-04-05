@@ -1,17 +1,14 @@
 """Tests for Zig language extraction."""
-import json
-import os
-from pathlib import Path
 
 import pytest
 
-from smg.graph import SemGraph
 from smg.model import NodeType, RelType
 from smg.scan import file_to_module_name, scan_paths
 from smg.storage import init_project, load_graph
 
 try:
     import tree_sitter_zig
+
     HAS_ZIG = True
 except ImportError:
     HAS_ZIG = False

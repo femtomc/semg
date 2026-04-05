@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from smg.graph import SemGraph
-from smg.langs import ExtractResult, get_extractor, load_extractors
+from smg.langs import get_extractor, load_extractors
 from smg.model import Edge, Node, NodeType, RelType
 
 DEFAULT_EXCLUDES = [
@@ -84,10 +84,7 @@ def file_to_module_name(file_path: str, root: Path) -> str:
             # Python: __init__.py signals a package
             # JS/TS: any directory under src/ is treated as a module root
             has_py_init = (candidate / "__init__.py").exists()
-            has_js_marker = (
-                (root / "package.json").exists()
-                or (root / "tsconfig.json").exists()
-            )
+            has_js_marker = (root / "package.json").exists() or (root / "tsconfig.json").exists()
             if has_py_init or has_js_marker:
                 parts = parts[1:]
 
@@ -104,7 +101,26 @@ def file_to_module_name(file_path: str, root: Path) -> str:
     return ".".join(parts)
 
 
-_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".zig", ".c", ".h", ".cpp", ".hpp", ".cc", ".cxx", ".hxx", ".cu", ".cuh", ".metal")
+_EXTENSIONS = (
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".zig",
+    ".c",
+    ".h",
+    ".cpp",
+    ".hpp",
+    ".cc",
+    ".cxx",
+    ".hxx",
+    ".cu",
+    ".cuh",
+    ".metal",
+)
 
 
 def _strip_extension(filename: str) -> str | None:
@@ -188,7 +204,6 @@ def _ensure_package_hierarchy(graph: SemGraph, module_name: str, root: Path) -> 
     parts = module_name.split(".")
     for i in range(len(parts) - 1):
         pkg_name = ".".join(parts[: i + 1])
-        child_name = ".".join(parts[: i + 2])
         if graph.get_node(pkg_name) is None:
             graph.add_node(Node(name=pkg_name, type=NodeType.PACKAGE))
         # The CONTAINS edge from package to child will be added if child exists
@@ -214,10 +229,7 @@ def scan_paths(
     # the scanned paths) so that renames/deletes don't leave stale nodes.
     # Collect orphaned manual edges before cascade-deleting nodes.
     if clean:
-        rel_paths = {
-            str(fpath.relative_to(root)) if fpath.is_relative_to(root) else str(fpath)
-            for fpath in files
-        }
+        rel_paths = {str(fpath.relative_to(root)) if fpath.is_relative_to(root) else str(fpath) for fpath in files}
 
         # Resolve which directories are being scanned so we can detect
         # stale nodes from deleted files under those directories.
@@ -256,23 +268,27 @@ def scan_paths(
                 if edge.metadata.get("source") != "manual" or edge.key in seen_manual_edges:
                     continue
                 seen_manual_edges.add(edge.key)
-                stats.orphaned_manual_edges.append({
-                    "source": edge.source,
-                    "rel": edge.rel.value,
-                    "target": edge.target,
-                    "reason": f"{'source' if edge.source == name else 'target'} node removed",
-                })
+                stats.orphaned_manual_edges.append(
+                    {
+                        "source": edge.source,
+                        "rel": edge.rel.value,
+                        "target": edge.target,
+                        "reason": f"{'source' if edge.source == name else 'target'} node removed",
+                    }
+                )
                 stats.edges_removed += 1
             for edge in graph.iter_outgoing(name):
                 if edge.metadata.get("source") != "manual" or edge.key in seen_manual_edges:
                     continue
                 seen_manual_edges.add(edge.key)
-                stats.orphaned_manual_edges.append({
-                    "source": edge.source,
-                    "rel": edge.rel.value,
-                    "target": edge.target,
-                    "reason": f"{'source' if edge.source == name else 'target'} node removed",
-                })
+                stats.orphaned_manual_edges.append(
+                    {
+                        "source": edge.source,
+                        "rel": edge.rel.value,
+                        "target": edge.target,
+                        "reason": f"{'source' if edge.source == name else 'target'} node removed",
+                    }
+                )
                 stats.edges_removed += 1
             stats.nodes_removed += 1
             graph.remove_node(name)
@@ -359,10 +375,14 @@ def scan_paths(
             if graph.get_node(parent) is not None and graph.get_node(child) is not None:
                 edge_key = (parent, RelType.CONTAINS.value, child)
                 if edge_key not in graph.edges:
-                    graph.add_edge(Edge(
-                        source=parent, target=child, rel=RelType.CONTAINS,
-                        metadata={"source": "scan"},
-                    ))
+                    graph.add_edge(
+                        Edge(
+                            source=parent,
+                            target=child,
+                            rel=RelType.CONTAINS,
+                            metadata={"source": "scan"},
+                        )
+                    )
                     stats.edges_added += 1
 
     # Resolve deferred (unresolved) edges — all nodes are now in the graph
@@ -393,10 +413,12 @@ def scan_paths(
         if node is not None:
             fan_in = graph.incoming_count(name, rel=RelType.CALLS)
             fan_out = graph.outgoing_count(name, rel=RelType.CALLS)
-            node.metadata.setdefault("metrics", {}).update({
-                "fan_in": fan_in,
-                "fan_out": fan_out,
-            })
+            node.metadata.setdefault("metrics", {}).update(
+                {
+                    "fan_in": fan_in,
+                    "fan_out": fan_out,
+                }
+            )
 
     return stats
 
@@ -411,12 +433,16 @@ def changed_files(root: Path, since: str = "HEAD") -> list[Path]:
         # Changed tracked files
         diff = subprocess.run(
             ["git", "diff", "--name-only", since],
-            capture_output=True, text=True, cwd=root,
+            capture_output=True,
+            text=True,
+            cwd=root,
         )
         # Untracked new files
         untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],
-            capture_output=True, text=True, cwd=root,
+            capture_output=True,
+            text=True,
+            cwd=root,
         )
     except FileNotFoundError:
         return []  # git not installed

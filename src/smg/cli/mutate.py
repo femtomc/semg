@@ -6,23 +6,22 @@ from pathlib import Path
 import rich_click as click
 from rich.table import Table
 
-from smg.graph import NodeNotFoundError, SemGraph
-from smg.model import Edge, Node, NodeType, RelType
-from smg.storage import init_project, save_graph
-
 from smg.cli import (
-    main,
-    _load,
-    _resolve_or_exit,
-    _auto_fmt,
-    _parse_meta,
-    _type_badge,
-    _rel_style,
-    console,
-    err_console,
     EXIT_NOT_FOUND,
     EXIT_VALIDATION,
+    _auto_fmt,
+    _load,
+    _parse_meta,
+    _rel_style,
+    _resolve_or_exit,
+    _type_badge,
+    console,
+    err_console,
+    main,
 )
+from smg.graph import NodeNotFoundError
+from smg.model import Edge, Node, NodeType, RelType
+from smg.storage import init_project, save_graph
 
 
 @main.command()
@@ -43,7 +42,14 @@ def init() -> None:
 @click.option("--line", default=None, type=int, help="Line number")
 @click.option("--doc", default=None, help="Docstring / description")
 @click.option("--meta", multiple=True, help="KEY=VALUE metadata (repeatable)")
-def add(type: str, name: str, file_: str | None, line: int | None, doc: str | None, meta: tuple[str, ...]) -> None:
+def add(
+    type: str,
+    name: str,
+    file_: str | None,
+    line: int | None,
+    doc: str | None,
+    meta: tuple[str, ...],
+) -> None:
     """Add a node to the graph (upserts if it already exists).
 
     \b
@@ -149,7 +155,14 @@ def unlink(source: str, rel: str, target: str) -> None:
 @click.option("--line", default=None, type=int, help="Line number")
 @click.option("--doc", default=None, help="Docstring / description")
 @click.option("--meta", multiple=True, help="KEY=VALUE metadata (repeatable)")
-def update(name: str, type_: str | None, file_: str | None, line: int | None, doc: str | None, meta: tuple[str, ...]) -> None:
+def update(
+    name: str,
+    type_: str | None,
+    file_: str | None,
+    line: int | None,
+    doc: str | None,
+    meta: tuple[str, ...],
+) -> None:
     """Update a node's fields (only specified fields are changed).
 
     \b
@@ -175,12 +188,37 @@ def update(name: str, type_: str | None, file_: str | None, line: int | None, do
 
 @main.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option("--clean", is_flag=True, help="Remove scan-sourced nodes from scanned files before repopulating")
-@click.option("--changed", is_flag=True, help="Only rescan files changed since last commit (implies --clean)")
-@click.option("--since", default=None, help="Only rescan files changed since REF (implies --clean)")
+@click.option(
+    "--clean",
+    is_flag=True,
+    help="Remove scan-sourced nodes from scanned files before repopulating",
+)
+@click.option(
+    "--changed",
+    is_flag=True,
+    help="Only rescan files changed since last commit (implies --clean)",
+)
+@click.option(
+    "--since",
+    default=None,
+    help="Only rescan files changed since REF (implies --clean)",
+)
 @click.option("--exclude", multiple=True, help="Additional exclude patterns (repeatable)")
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
-def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, exclude: tuple[str, ...], fmt: str | None) -> None:
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
+def scan(
+    paths: tuple[str, ...],
+    clean: bool,
+    changed: bool,
+    since: str | None,
+    exclude: tuple[str, ...],
+    fmt: str | None,
+) -> None:
     """Scan source files with tree-sitter and populate the graph.
 
     \b
@@ -199,9 +237,7 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
     try:
         from smg.scan import changed_files, scan_paths
     except ImportError:
-        err_console.print(
-            "[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install smg\\[scan][/]"
-        )
+        err_console.print("[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install smg\\[scan][/]")
         sys.exit(EXIT_VALIDATION)
 
     graph, root = _load()
@@ -213,7 +249,15 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
             fmt = _auto_fmt(fmt)
             if fmt == "json":
                 import json
-                click.echo(json.dumps({"files": 0, "message": f"no supported files changed since {ref}"}))
+
+                click.echo(
+                    json.dumps(
+                        {
+                            "files": 0,
+                            "message": f"no supported files changed since {ref}",
+                        }
+                    )
+                )
             else:
                 console.print(f"[dim]No supported files changed since {ref}.[/]")
             return
@@ -226,10 +270,17 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
 
     # Progress callback for text mode
     progress_cb = None
+    progress_ctx = None
     if fmt == "text" and sys.stdout.isatty():
-        from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, MofNCompleteColumn
+        from rich.progress import (
+            BarColumn,
+            MofNCompleteColumn,
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+        )
 
-        progress = Progress(
+        progress_ctx = Progress(
             SpinnerColumn(),
             TextColumn("[bold]{task.description}"),
             BarColumn(bar_width=30),
@@ -237,16 +288,30 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
             console=console,
             transient=True,
         )
-        progress.start()
-        task_id = progress.add_task("Scanning...", total=None)
+        progress_ctx.start()
+        task_id = progress_ctx.add_task("Scanning...", total=None)
 
-        def progress_cb(current, total, file_path):
-            progress.update(task_id, total=total, completed=current, description=f"[dim]{file_path}[/]")
+        def _on_progress(current: int, total: int, file_path: str) -> None:
+            progress_ctx.update(  # type: ignore[union-attr]
+                task_id,
+                total=total,
+                completed=current,
+                description=f"[dim]{file_path}[/]",
+            )
 
-    stats = scan_paths(graph, root, scan_dirs, clean=clean, excludes=list(exclude) or None, on_progress=progress_cb)
+        progress_cb = _on_progress
 
-    if progress_cb is not None:
-        progress.stop()
+    stats = scan_paths(
+        graph,
+        root,
+        scan_dirs,
+        clean=clean,
+        excludes=list(exclude) or None,
+        on_progress=progress_cb,
+    )
+
+    if progress_ctx is not None:
+        progress_ctx.stop()
 
     save_graph(graph, root)
 
@@ -274,8 +339,14 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
         table.add_column("Label", style="dim")
         table.add_column("Value")
         type_parts = ", ".join(f"{v} {_type_badge(k)}" for k, v in sorted(stats.type_counts.items()))
-        table.add_row("Nodes", f"+{stats.nodes_added} -{stats.nodes_removed}" if stats.nodes_removed else type_parts)
-        table.add_row("Edges", f"+{stats.edges_added} -{stats.edges_removed}" if stats.edges_removed else str(stats.edges_added))
+        table.add_row(
+            "Nodes",
+            f"+{stats.nodes_added} -{stats.nodes_removed}" if stats.nodes_removed else type_parts,
+        )
+        table.add_row(
+            "Edges",
+            f"+{stats.edges_added} -{stats.edges_removed}" if stats.edges_removed else str(stats.edges_added),
+        )
         if stats.skipped_edges:
             table.add_row("Skipped", f"{stats.skipped_edges} unresolved")
         # Warn if most edges were skipped (likely scanned too narrow a scope)
@@ -298,7 +369,12 @@ def scan(paths: tuple[str, ...], clean: bool, changed: bool, since: str | None, 
 
 @main.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
-@click.option("--debounce", default=0.5, type=float, help="Seconds to wait before rescanning after a change")
+@click.option(
+    "--debounce",
+    default=0.5,
+    type=float,
+    help="Seconds to wait before rescanning after a change",
+)
 def watch(paths: tuple[str, ...], debounce: float) -> None:
     """Watch source files and auto-rescan on changes.
 
@@ -309,9 +385,7 @@ def watch(paths: tuple[str, ...], debounce: float) -> None:
     try:
         from smg.watch import watch_and_scan
     except ImportError:
-        err_console.print(
-            "[red]Error:[/] watchdog not installed. Install with: [bold]uv pip install smg\\[scan][/]"
-        )
+        err_console.print("[red]Error:[/] watchdog not installed. Install with: [bold]uv pip install smg\\[scan][/]")
         sys.exit(EXIT_VALIDATION)
 
     _graph, root = _load()
@@ -363,7 +437,13 @@ def watch(paths: tuple[str, ...], debounce: float) -> None:
 
 
 @main.command()
-@click.option("--format", "fmt", default=None, type=click.Choice(["text", "json"]), help="Output format (auto-detects: JSON when piped)")
+@click.option(
+    "--format",
+    "fmt",
+    default=None,
+    type=click.Choice(["text", "json"]),
+    help="Output format (auto-detects: JSON when piped)",
+)
 def batch(fmt: str | None) -> None:
     """Execute JSONL commands from stdin in one load/save cycle.
 
@@ -426,7 +506,14 @@ def batch(fmt: str | None) -> None:
                 )
                 graph.add_edge(edge)
                 stats["ok"] += 1
-                stats["ops"].append({"line": line_no, "op": "link", "source": cmd["source"], "target": cmd["target"]})
+                stats["ops"].append(
+                    {
+                        "line": line_no,
+                        "op": "link",
+                        "source": cmd["source"],
+                        "target": cmd["target"],
+                    }
+                )
 
             elif op == "rm":
                 name = cmd["name"]
