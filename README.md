@@ -2,6 +2,8 @@
 
 Parses source code into a semantic graph of modules, classes, functions, and their relationships, then runs graph-theoretic and OO metrics to surface hotspots, track structural change across commits, and enforce design constraints.
 
+Really, this is for LM agents -- it's supposed to give them better eyes on the structure of your codebase.
+
 ## Install
 
 ```bash
