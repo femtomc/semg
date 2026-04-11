@@ -74,6 +74,7 @@ def run_analysis(
     full: bool = True,
     declared_concepts: list[Concept] | None = None,
     on_step: Callable[[str], None] | None = None,
+    include_betweenness: bool | None = None,
 ) -> AnalysisResult:
     """Run all analyses on a graph and return structured results.
 
@@ -84,6 +85,8 @@ def run_analysis(
         full: If False, skip expensive non-summary metrics (fan-in/out, HITS, max_method_cc).
         declared_concepts: Optional declared concepts to materialize and analyze.
         on_step: Optional callback for progress reporting.
+        include_betweenness: Tri-state gate for betweenness centrality.
+            None = auto (skip above 50K nodes), True = always, False = never.
     """
     r = AnalysisResult()
     step = on_step or (lambda _: None)
@@ -99,7 +102,7 @@ def run_analysis(
     step("Computing PageRank...")
     r.pagerank = graph_metrics.pagerank(graph)
     step("Computing betweenness centrality...")
-    r.betweenness = graph_metrics.betweenness_centrality(graph)
+    r.betweenness = graph_metrics.betweenness_centrality(graph, include=include_betweenness)
     step("Computing k-core decomposition...")
     r.kcore = graph_metrics.kcore_decomposition(graph)
     step("Detecting bridges...")

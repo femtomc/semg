@@ -7,6 +7,7 @@ containment edges are excluded since they encode hierarchy, not coupling.
 
 from __future__ import annotations
 
+import logging
 import random
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING
@@ -16,6 +17,8 @@ from smg.model import RelType
 
 if TYPE_CHECKING:
     from smg.model import Node
+
+_log = logging.getLogger(__name__)
 
 # Edge types that represent coupling (not containment/annotation)
 _COUPLING_RELS = frozenset(
@@ -27,6 +30,8 @@ _COUPLING_RELS = frozenset(
         RelType.DEPENDS_ON.value,
     }
 )
+
+_BETWEENNESS_NODE_THRESHOLD = 50_000
 
 
 def _coupling_adj(
@@ -275,6 +280,8 @@ def pagerank(
 def betweenness_centrality(
     graph: SemGraph,
     *,
+    include: bool | None = None,
+    node_threshold: int = _BETWEENNESS_NODE_THRESHOLD,
     sample_threshold: int = 5_000,
     sample_size: int = 500,
 ) -> dict[str, float]:
@@ -285,10 +292,29 @@ def betweenness_centrality(
     instead of all nodes (approximate betweenness). Returns normalized
     values in [0, 1].
 
+    The *include* parameter gates whether the computation runs at all:
+    ``None`` (default) auto-skips when the coupling graph exceeds
+    *node_threshold* nodes (default 50K); ``True`` forces computation
+    regardless; ``False`` always skips. When skipped, returns an empty
+    dict.
+
     If the native Zig accelerator is available, delegates to it for
     significant speedup (~50-100x for typical graphs).
     """
     adj, nodes = _undirected_coupling_adj(graph)
+    n = len(nodes)
+
+    # Gate by graph size to avoid O(VE) on large graphs.
+    if include is False:
+        return {}
+    if include is None and n > node_threshold:
+        _log.info(
+            "Skipping betweenness centrality: %d coupling nodes exceeds "
+            "%d-node threshold (pass include=True to override)",
+            n,
+            node_threshold,
+        )
+        return {}
 
     # Try native accelerator first
     try:
@@ -299,7 +325,6 @@ def betweenness_centrality(
             return result
     except Exception:
         pass  # Fall through to Python implementation
-    n = len(nodes)
     if n < 3:
         return {node: 0.0 for node in nodes}
 

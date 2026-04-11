@@ -235,6 +235,44 @@ def test_betweenness_empty():
     assert betweenness_centrality(SemGraph()) == {}
 
 
+def test_betweenness_gated_by_threshold():
+    """Betweenness is skipped when coupling node count exceeds threshold."""
+    g = SemGraph()
+    for n in "abcde":
+        g.add_node(_node(n))
+    g.add_edge(_edge("a", "b"))
+    g.add_edge(_edge("b", "c"))
+    g.add_edge(_edge("c", "d"))
+    g.add_edge(_edge("d", "e"))
+    bc = betweenness_centrality(g, node_threshold=3)
+    assert bc == {}
+
+
+def test_betweenness_include_true_overrides_threshold():
+    """include=True forces computation regardless of threshold."""
+    g = SemGraph()
+    for n in "abcde":
+        g.add_node(_node(n))
+    g.add_edge(_edge("a", "b"))
+    g.add_edge(_edge("b", "c"))
+    g.add_edge(_edge("c", "d"))
+    g.add_edge(_edge("d", "e"))
+    bc = betweenness_centrality(g, include=True, node_threshold=3)
+    assert len(bc) == 5
+    assert bc["c"] > 0
+
+
+def test_betweenness_include_false_always_skips():
+    """include=False skips even on small graphs."""
+    g = SemGraph()
+    for n in "abc":
+        g.add_node(_node(n))
+    g.add_edge(_edge("a", "b"))
+    g.add_edge(_edge("b", "c"))
+    bc = betweenness_centrality(g, include=False)
+    assert bc == {}
+
+
 # --- k-core decomposition ---
 
 

@@ -718,6 +718,11 @@ def diff(ref: str, fmt: str | None) -> None:
     help="Output format",
 )
 @click.option("--full", is_flag=True, help="Show all sections and full JSON (no truncation)")
+@click.option(
+    "--include-betweenness",
+    is_flag=True,
+    help="Force betweenness centrality even on large graphs (auto-skipped above 50K nodes)",
+)
 def analyze(
     top_n: int,
     module_filter: str | None,
@@ -727,6 +732,7 @@ def analyze(
     churn_days: int,
     fmt: str | None,
     full: bool,
+    include_betweenness: bool,
 ) -> None:
     """Deep architectural analysis with hotspot detection.
 
@@ -812,6 +818,7 @@ def analyze(
             full=not summary,
             declared_concepts=declared_concepts,
             on_step=_step,
+            include_betweenness=True if include_betweenness else None,
         )
     except ConceptConfigurationError as e:
         if progress_ctx is not None:
