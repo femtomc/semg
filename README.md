@@ -7,10 +7,16 @@ and allow them to poke around and prod it as a graph of semantic entities.
 
 It's not ... say, Smalltalk ... but it'll have to do for today.
 
-## Install
+## Installation
+
+> **Warning:** the PyPI package named `smg` is "Shepherd Model Gateway," an
+> unrelated project. Do **not** run `pip install smg` or `uv tool install smg`
+> without `--from` — you will get the wrong package. Always install from this
+> git repo or a local checkout.
+
+Install as a CLI tool (all supported languages):
 
 ```bash
-# All languages
 uv tool install smg \
   --from git+https://github.com/femtomc/smg \
   --with tree-sitter \
@@ -21,9 +27,21 @@ uv tool install smg \
   --with tree-sitter-zig \
   --with xxhash \
   --with watchdog
+```
 
-# Python only
-uv tool install smg --from git+https://github.com/femtomc/smg --with tree-sitter --with tree-sitter-python --with xxhash
+Python-only variant (smaller install):
+
+```bash
+uv tool install smg \
+  --from git+https://github.com/femtomc/smg \
+  --with tree-sitter --with tree-sitter-python --with xxhash
+```
+
+For development from a local checkout:
+
+```bash
+git clone https://github.com/femtomc/smg && cd smg
+uv pip install -e ".[scan,dev]"
 ```
 
 ## Quick start
