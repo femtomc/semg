@@ -102,6 +102,7 @@ class PythonExtractor:
         edges: list[Edge] = []
         self._walk_body(tree.root_node, source, module_name, file_path, nodes, edges)
         self._extract_imports(tree.root_node, module_name, edges)
+        self._extract_dynamic_imports(tree.root_node, module_name, edges)
         return ExtractResult(nodes=nodes, edges=edges)
 
     def _walk_body(
@@ -376,35 +377,91 @@ class PythonExtractor:
         module_name: str,
         out_edges: list[Edge],
     ) -> None:
-        """Extract import statements as IMPORTS edges."""
-        for child in root.children:
-            if child.type == "import_statement":
-                # import X, import X.Y
-                for name_node in child.children:
+        """Extract import statements as IMPORTS edges via full AST walk."""
+        root_children = frozenset(id(c) for c in root.children)
+        stack: list[TSNode] = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "import_statement":
+                deferred = id(node) not in root_children
+                for name_node in node.children:
                     if name_node.type == "dotted_name":
                         target = name_node.text.decode()
+                        meta: dict = {"unresolved": True}
+                        if deferred:
+                            meta["deferred"] = True
                         out_edges.append(
                             Edge(
                                 source=module_name,
                                 target=target,
                                 rel=RelType.IMPORTS,
-                                metadata={"unresolved": True},
+                                metadata=meta,
                             )
                         )
-            elif child.type == "import_from_statement":
-                # from X import Y — handles both absolute and relative imports
-                target = self._resolve_import_from(child, module_name)
+            elif node.type == "import_from_statement":
+                deferred = id(node) not in root_children
+                target = self._resolve_import_from(node, module_name)
                 if target is not None:
+                    meta = {"unresolved": True}
+                    if deferred:
+                        meta["deferred"] = True
                     out_edges.append(
                         Edge(
                             source=module_name,
                             target=target,
                             rel=RelType.IMPORTS,
-                            metadata={"unresolved": True},
+                            metadata=meta,
                         )
                     )
-            elif child.type == "future_import_statement":
+            elif node.type == "future_import_statement":
                 pass  # skip `from __future__ import ...`
+            for child in node.children:
+                stack.append(child)
+
+    def _extract_dynamic_imports(
+        self,
+        root: TSNode,
+        module_name: str,
+        out_edges: list[Edge],
+    ) -> None:
+        """Extract importlib.import_module / __import__ calls as IMPORTS edges."""
+        _DYNAMIC_IMPORT_FUNCS = {"importlib.import_module", "__import__"}
+        stack: list[TSNode] = [root]
+        while stack:
+            node = stack.pop()
+            if node.type == "call":
+                func = node.child_by_field_name("function")
+                if func is not None:
+                    fname = func.text.decode()
+                    if fname in _DYNAMIC_IMPORT_FUNCS:
+                        args = node.child_by_field_name("arguments")
+                        if args is not None:
+                            first_arg = next(
+                                (c for c in args.children if c.type == "string"),
+                                None,
+                            )
+                            if first_arg is not None:
+                                target = self._string_literal_value(first_arg)
+                                if target and not target.startswith("."):
+                                    out_edges.append(
+                                        Edge(
+                                            source=module_name,
+                                            target=target,
+                                            rel=RelType.IMPORTS,
+                                            metadata={"dynamic": True, "unresolved": True},
+                                        )
+                                    )
+            for child in node.children:
+                stack.append(child)
+
+    @staticmethod
+    def _string_literal_value(string_node: TSNode) -> str | None:
+        """Extract the text content of a tree-sitter string node."""
+        content = next(
+            (c for c in string_node.children if c.type == "string_content"),
+            None,
+        )
+        return content.text.decode() if content is not None else None
 
     def _resolve_import_from(self, node: TSNode, module_name: str) -> str | None:
         """Resolve a from...import statement to a target module name.
