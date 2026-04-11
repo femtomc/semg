@@ -10,10 +10,10 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 
 # em dash and ellipsis are allowed by the character-set policy
-_FOOTER_TEMPLATE = "(showing {n} of {m} \u2014 use --limit 0 for all, --json for machine-readable)"
-_TRUNCATION_LINE = "(output truncated at 16 KB \u2014 run with --json for full data or --limit to scope down)"
-_TRUNCATION_LINE_BYTES = len(_TRUNCATION_LINE.encode("utf-8")) + 1  # +1 for \n = 87
-_BODY_BUDGET = 16384 - _TRUNCATION_LINE_BYTES  # 16297
+_FOOTER_TEMPLATE = "(showing {n} of {m} -- use --limit 0 for all, --json for machine-readable)"
+_TRUNCATION_LINE = "(output truncated at 16 KB -- run with --json for full data or --limit to scope down)"
+_TRUNCATION_LINE_BYTES = len(_TRUNCATION_LINE.encode("utf-8")) + 1  # +1 for \n = 86
+_BODY_BUDGET = 16384 - _TRUNCATION_LINE_BYTES  # 16298
 
 # Column spec: (header_lowercase, row_key, options)
 # options: {"align": "left"|"right", "max_width": int}
@@ -60,8 +60,8 @@ def _truncate_to_width(s: str, max_w: int) -> str:
     w = _wcswidth(s)
     if w <= max_w:
         return s
-    # keep prefix up to max_w - 1, then append ellipsis
-    target = max_w - 1  # reserve 1 column for `...`
+    # keep prefix up to max_w - 2, then append ".."
+    target = max_w - 2  # reserve 2 columns for ".."
     acc = 0
     result: list[str] = []
     for ch in s:
@@ -75,7 +75,7 @@ def _truncate_to_width(s: str, max_w: int) -> str:
             break
         acc += cw
         result.append(ch)
-    return "".join(result) + "\u2026"
+    return "".join(result) + ".."
 
 
 def compact_table(

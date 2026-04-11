@@ -1673,7 +1673,7 @@ def search(
                     click.echo(f"   {line}")
             click.echo()
         if total > len(hits):
-            click.echo(f"(showing {len(hits)} of {total} \u2014 use --limit 0 for all, --json for machine-readable)")
+            click.echo(f"(showing {len(hits)} of {total} -- use --limit 0 for all, --json for machine-readable)")
         return
 
     displayed_total = total if total > len(rows) else None
