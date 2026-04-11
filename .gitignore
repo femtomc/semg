@@ -19,3 +19,6 @@ native/zig-out/
 # Tool / test caches
 .codex
 .hypothesis/
+
+# Internal audit / orchestration notes (kept local, not published)
+docs/pain-points/
