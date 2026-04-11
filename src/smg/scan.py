@@ -32,6 +32,7 @@ DEFAULT_EXCLUDES = [
     "vendor",
     "third_party",
     "zig-cache",
+    ".zig-cache",
     "zig-out",
 ]
 

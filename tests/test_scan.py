@@ -60,6 +60,25 @@ def test_collect_files_excludes(tmp_path):
     assert "hooks.py" not in names
 
 
+def test_collect_files_excludes_zig_cache(tmp_path):
+    """Zig cache directories (.zig-cache, zig-cache, zig-out) are excluded."""
+    from smg.langs import load_extractors
+
+    load_extractors()
+
+    (tmp_path / "good.zig").write_text("const x = 1;")
+
+    for cache_dir in [".zig-cache", "zig-cache", "zig-out"]:
+        d = tmp_path / cache_dir
+        d.mkdir()
+        (d / "cached.zig").write_text("const y = 2;")
+
+    files = collect_files([tmp_path], tmp_path)
+    names = [f.name for f in files]
+    assert "good.zig" in names
+    assert "cached.zig" not in names
+
+
 def test_collect_files_custom_exclude(tmp_path):
     from smg.langs import load_extractors
 
