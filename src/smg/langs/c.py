@@ -213,6 +213,51 @@ class _FunctionName:
     qualifiers: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class _ResolvedScope:
+    containing_name: str
+    class_name: str | None = None
+
+
+@dataclass
+class _CExtractionContext:
+    is_cpp: bool
+    namespaces: set[str]
+    classes: set[str]
+    types: set[str]
+    function_macros: set[str]
+
+    def resolve_qualified_scope(self, parent_name: str, qualifiers: tuple[str, ...]) -> _ResolvedScope:
+        fallback = ".".join([parent_name, *qualifiers])
+        for candidate in self._candidate_names(parent_name, qualifiers):
+            if candidate in self.classes:
+                return _ResolvedScope(containing_name=candidate, class_name=candidate)
+            if candidate in self.namespaces:
+                return _ResolvedScope(containing_name=candidate)
+        return _ResolvedScope(containing_name=fallback)
+
+    def resolve_type_name(self, parent_name: str, parts: list[str]) -> str:
+        qualifiers = tuple(parts)
+        for candidate in self._candidate_names(parent_name, qualifiers):
+            if candidate in self.classes or candidate in self.types:
+                return candidate
+        return ".".join(parts)
+
+    def _candidate_names(self, parent_name: str, parts: tuple[str, ...]) -> list[str]:
+        if not parts:
+            return []
+        parent_parts = parent_name.split(".") if parent_name else []
+        raw_candidates = [".".join([*parent_parts[:idx], *parts]) for idx in range(len(parent_parts), 0, -1)]
+        raw_candidates.append(".".join(parts))
+        seen: set[str] = set()
+        candidates: list[str] = []
+        for candidate in raw_candidates:
+            if candidate and candidate not in seen:
+                seen.add(candidate)
+                candidates.append(candidate)
+        return candidates
+
+
 C_BRANCH_MAP = BranchMap(
     branch_nodes=frozenset(
         {
@@ -256,7 +301,8 @@ class _CExtractorBase:
         tree = parser.parse(source)
         nodes: list[Node] = []
         edges: list[Edge] = []
-        self._walk_top_level(tree.root_node, source, module_name, file_path, nodes, edges, is_cpp)
+        context = _collect_context(tree.root_node, module_name, is_cpp)
+        self._walk_top_level(tree.root_node, source, module_name, file_path, nodes, edges, context)
         self._extract_includes(tree.root_node, module_name, edges)
         return ExtractResult(nodes=nodes, edges=edges)
 
@@ -268,7 +314,7 @@ class _CExtractorBase:
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
-        is_cpp: bool,
+        context: _CExtractionContext,
     ) -> None:
         _TRANSPARENT = frozenset(
             {
@@ -292,21 +338,26 @@ class _CExtractorBase:
                     stack.append((child, pname))
                     continue
                 if ctype == "function_definition":
-                    self._extract_function(child, source, pname, None, file_path, nodes, edges)
+                    self._extract_function(child, source, pname, None, file_path, nodes, edges, context)
                 elif ctype == "type_definition":
                     self._extract_typedef(child, source, pname, file_path, nodes, edges)
                 elif ctype == "preproc_def":
                     self._extract_define(child, pname, file_path, nodes, edges)
+                elif ctype == "preproc_function_def":
+                    self._extract_function_macro(child, source, pname, file_path, nodes, edges)
                 elif ctype == "declaration":
-                    # Handle top-level class/struct in declarations (template specialization etc)
-                    if is_cpp:
-                        for inner in child.children:
-                            if inner.type in ("class_specifier", "struct_specifier"):
-                                self._extract_cpp_class(inner, source, pname, file_path, nodes, edges)
-                elif is_cpp and ctype == "namespace_definition":
-                    self._extract_namespace(child, source, pname, file_path, nodes, edges)
-                elif is_cpp and ctype in ("class_specifier", "struct_specifier"):
-                    self._extract_cpp_class(child, source, pname, file_path, nodes, edges)
+                    self._extract_declaration(child, source, pname, file_path, nodes, edges, context)
+                elif ctype in ("struct_specifier", "union_specifier"):
+                    if context.is_cpp:
+                        self._extract_cpp_class(child, source, pname, file_path, nodes, edges, context)
+                    else:
+                        self._extract_record_type(child, source, pname, file_path, nodes, edges)
+                elif ctype == "enum_specifier":
+                    self._extract_enum_type(child, source, pname, file_path, nodes, edges)
+                elif context.is_cpp and ctype == "namespace_definition":
+                    self._extract_namespace(child, source, pname, file_path, nodes, edges, context)
+                elif context.is_cpp and ctype == "class_specifier":
+                    self._extract_cpp_class(child, source, pname, file_path, nodes, edges, context)
 
     def _extract_namespace(
         self,
@@ -316,6 +367,7 @@ class _CExtractorBase:
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
+        context: _CExtractionContext,
     ) -> None:
         name_node = _find_child(node, "namespace_identifier")
         if name_node is None:
@@ -336,7 +388,26 @@ class _CExtractorBase:
 
         body = _find_child(node, "declaration_list")
         if body is not None:
-            self._walk_top_level(body, source, qualified, file_path, nodes, edges, is_cpp=True)
+            self._walk_top_level(body, source, qualified, file_path, nodes, edges, context)
+
+    def _extract_declaration(
+        self,
+        node: TSNode,
+        source: bytes,
+        parent_name: str,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+        context: _CExtractionContext,
+    ) -> None:
+        for inner in node.children:
+            if inner.type in ("struct_specifier", "union_specifier"):
+                if context.is_cpp:
+                    self._extract_cpp_class(inner, source, parent_name, file_path, nodes, edges, context)
+                else:
+                    self._extract_record_type(inner, source, parent_name, file_path, nodes, edges)
+            elif inner.type == "enum_specifier":
+                self._extract_enum_type(inner, source, parent_name, file_path, nodes, edges)
 
     def _extract_cpp_class(
         self,
@@ -346,6 +417,7 @@ class _CExtractorBase:
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
+        context: _CExtractionContext,
     ) -> None:
         name_node = _find_child(node, "type_identifier")
         if name_node is None:
@@ -372,11 +444,14 @@ class _CExtractorBase:
         base_clause = _find_child(node, "base_class_clause")
         if base_clause is not None:
             for child in base_clause.children:
-                if child.type == "type_identifier":
+                if child.type == "access_specifier":
+                    continue
+                parts = _qualified_name_parts(child)
+                if parts:
                     edges.append(
                         Edge(
                             source=qualified,
-                            target=_node_text(child),
+                            target=context.resolve_type_name(parent_name, parts),
                             rel=RelType.INHERITS,
                             metadata={"unresolved": True},
                         )
@@ -387,9 +462,68 @@ class _CExtractorBase:
         if body is not None:
             for child in body.children:
                 if child.type == "function_definition":
-                    self._extract_function(child, source, qualified, qualified, file_path, nodes, edges)
+                    self._extract_function(child, source, qualified, qualified, file_path, nodes, edges, context)
                 elif child.type in ("declaration", "field_declaration"):
                     self._extract_method_declaration(child, source, qualified, file_path, nodes, edges)
+
+    def _extract_record_type(
+        self,
+        node: TSNode,
+        source: bytes,
+        parent_name: str,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+    ) -> None:
+        name_node = _find_child(node, "type_identifier")
+        if name_node is None:
+            return
+        kind = "union" if node.type == "union_specifier" else "struct"
+        qualified = f"{parent_name}.{_node_text(name_node)}"
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.CLASS,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "c_kind": kind,
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
+        edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
+
+    def _extract_enum_type(
+        self,
+        node: TSNode,
+        source: bytes,
+        parent_name: str,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+    ) -> None:
+        name_node = _find_child(node, "type_identifier")
+        if name_node is None:
+            return
+        qualified = f"{parent_name}.{_node_text(name_node)}"
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.TYPE,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "c_kind": "enum",
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
+        edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_method_declaration(
         self,
@@ -428,25 +562,35 @@ class _CExtractorBase:
         nodes: list[Node],
         edges: list[Edge],
     ) -> None:
-        """Extract typedef struct as a CLASS node."""
-        struct_node = _find_child(node, "struct_specifier")
-        if struct_node is None:
+        """Extract typedef struct/union/enum declarations as type nodes."""
+        type_node = (
+            _find_child(node, "struct_specifier")
+            or _find_child(node, "union_specifier")
+            or _find_child(node, "enum_specifier")
+        )
+        if type_node is None:
             return
-        # The typedef name is the type_identifier at the end
         name_node = _find_child(node, "type_identifier")
         if name_node is None:
             return
-        struct_name = _node_text(name_node)
-        qualified = f"{parent_name}.{struct_name}"
+        type_name = _node_text(name_node)
+        qualified = f"{parent_name}.{type_name}"
+        node_type = NodeType.TYPE if type_node.type == "enum_specifier" else NodeType.CLASS
+        kind = {
+            "struct_specifier": "struct",
+            "union_specifier": "union",
+            "enum_specifier": "enum",
+        }[type_node.type]
 
         nodes.append(
             Node(
                 name=qualified,
-                type=NodeType.CLASS,
+                type=node_type,
                 file=file_path,
                 line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
                 metadata={
+                    "c_kind": kind,
                     "content_hash": content_hash(source, node.start_byte, node.end_byte),
                     "structure_hash": structure_hash(node),
                 },
@@ -481,6 +625,35 @@ class _CExtractorBase:
         )
         edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
 
+    def _extract_function_macro(
+        self,
+        node: TSNode,
+        source: bytes,
+        parent_name: str,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+    ) -> None:
+        name_node = node.child_by_field_name("name") or _find_child(node, "identifier")
+        if name_node is None:
+            return
+        qualified = f"{parent_name}.{_node_text(name_node)}"
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.FUNCTION,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "macro": True,
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
+        edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
+
     def _extract_function(
         self,
         node: TSNode,
@@ -490,6 +663,7 @@ class _CExtractorBase:
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
+        context: _CExtractionContext,
     ) -> None:
         parsed_name = self._get_function_name(node)
         if parsed_name is None:
@@ -497,8 +671,9 @@ class _CExtractorBase:
         owner_name = class_name
         containing_name = parent_name
         if owner_name is None and parsed_name.qualifiers:
-            containing_name = ".".join([parent_name, *parsed_name.qualifiers])
-            owner_name = containing_name
+            resolved_scope = context.resolve_qualified_scope(parent_name, parsed_name.qualifiers)
+            containing_name = resolved_scope.containing_name
+            owner_name = resolved_scope.class_name
         qualified = f"{containing_name}.{parsed_name.name}"
 
         is_method = owner_name is not None
@@ -523,7 +698,7 @@ class _CExtractorBase:
         # Extract calls
         body = _find_child(node, "compound_statement")
         if body is not None:
-            self._extract_calls(body, qualified, owner_name, edges)
+            self._extract_calls(body, qualified, owner_name, edges, context)
 
     def _get_function_name(self, node: TSNode) -> _FunctionName | None:
         """Extract function name from various declarator patterns."""
@@ -585,12 +760,13 @@ class _CExtractorBase:
         caller_name: str,
         class_name: str | None,
         edges: list[Edge],
+        context: _CExtractionContext,
     ) -> None:
         stack: list[TSNode] = [root]
         while stack:
             node = stack.pop()
             if node.type == "call_expression":
-                target = self._call_target(node, class_name)
+                target = self._call_target(node, class_name, context)
                 if target is not None:
                     name, resolved = target
                     edges.append(
@@ -605,7 +781,12 @@ class _CExtractorBase:
                 if child.type != "function_definition":
                     stack.append(child)
 
-    def _call_target(self, call_node: TSNode, class_name: str | None) -> tuple[str, bool] | None:
+    def _call_target(
+        self,
+        call_node: TSNode,
+        class_name: str | None,
+        context: _CExtractionContext,
+    ) -> tuple[str, bool] | None:
         func = call_node.children[0] if call_node.children else None
         if func is None:
             return None
@@ -615,7 +796,7 @@ class _CExtractorBase:
             if name in _BUILTINS:
                 return None
             # Skip macro-like calls (ALL_CAPS identifiers)
-            if name.isupper() and len(name) > 1:
+            if name.isupper() and len(name) > 1 and name not in context.function_macros:
                 return None
             # Skip compiler intrinsics and framework macros
             if name.startswith(_SKIP_PREFIXES):
@@ -634,22 +815,26 @@ class _CExtractorBase:
         if func.type == "template_function":
             parts = _qualified_name_parts(func)
             if parts:
-                return self._qualified_call_target(parts)
+                return self._qualified_call_target(parts, context)
 
         if func.type == "qualified_identifier":
             parts = _qualified_name_parts(func)
             if parts:
-                return self._qualified_call_target(parts)
+                return self._qualified_call_target(parts, context)
 
         return None
 
-    def _qualified_call_target(self, parts: list[str]) -> tuple[str, bool] | None:
+    def _qualified_call_target(
+        self,
+        parts: list[str],
+        context: _CExtractionContext,
+    ) -> tuple[str, bool] | None:
         if not parts:
             return None
         if parts[0] in _BUILTINS:
             return None
         name = parts[-1]
-        if name in _BUILTINS or (name.isupper() and len(name) > 1):
+        if name in _BUILTINS or (name.isupper() and len(name) > 1 and name not in context.function_macros):
             return None
         return (".".join(parts), False)
 
@@ -671,6 +856,79 @@ def _find_descendant(node: TSNode, type_name: str) -> TSNode | None:
     return None
 
 
+def _collect_context(root: TSNode, module_name: str, is_cpp: bool) -> _CExtractionContext:
+    context = _CExtractionContext(
+        is_cpp=is_cpp,
+        namespaces=set(),
+        classes=set(),
+        types=set(),
+        function_macros=set(),
+    )
+    _collect_symbols(root, module_name, context)
+    return context
+
+
+def _collect_symbols(root: TSNode, parent_name: str, context: _CExtractionContext) -> None:
+    transparent = {
+        "translation_unit",
+        "declaration_list",
+        "template_declaration",
+        "preproc_ifdef",
+        "preproc_if",
+        "preproc_else",
+        "preproc_elif",
+        "linkage_specification",
+    }
+    for child in root.children:
+        ctype = child.type
+        if ctype in transparent:
+            _collect_symbols(child, parent_name, context)
+        elif ctype == "namespace_definition":
+            name_node = _find_child(child, "namespace_identifier")
+            if name_node is None:
+                continue
+            qualified = f"{parent_name}.{_node_text(name_node)}"
+            context.namespaces.add(qualified)
+            body = _find_child(child, "declaration_list")
+            if body is not None:
+                _collect_symbols(body, qualified, context)
+        elif ctype in ("class_specifier", "struct_specifier", "union_specifier"):
+            name_node = _find_child(child, "type_identifier")
+            if name_node is not None:
+                qualified = f"{parent_name}.{_node_text(name_node)}"
+                if context.is_cpp or ctype in ("struct_specifier", "union_specifier"):
+                    context.classes.add(qualified)
+                else:
+                    context.types.add(qualified)
+                body = _find_child(child, "field_declaration_list")
+                if body is not None:
+                    _collect_symbols(body, qualified, context)
+        elif ctype == "enum_specifier":
+            name_node = _find_child(child, "type_identifier")
+            if name_node is not None:
+                context.types.add(f"{parent_name}.{_node_text(name_node)}")
+        elif ctype == "type_definition":
+            name_node = child.child_by_field_name("declarator") or _find_child(child, "type_identifier")
+            type_node = (
+                _find_child(child, "struct_specifier")
+                or _find_child(child, "union_specifier")
+                or _find_child(child, "enum_specifier")
+            )
+            if name_node is None or type_node is None:
+                continue
+            qualified = f"{parent_name}.{_node_text(name_node)}"
+            if type_node.type in ("struct_specifier", "union_specifier"):
+                context.classes.add(qualified)
+            else:
+                context.types.add(qualified)
+        elif ctype == "declaration":
+            _collect_symbols(child, parent_name, context)
+        elif ctype == "preproc_function_def":
+            name_node = child.child_by_field_name("name") or _find_child(child, "identifier")
+            if name_node is not None:
+                context.function_macros.add(_node_text(name_node))
+
+
 def _qualified_name_parts(node: TSNode) -> list[str]:
     if node.type in ("identifier", "field_identifier", "type_identifier", "namespace_identifier"):
         return [_node_text(node)]
@@ -679,6 +937,9 @@ def _qualified_name_parts(node: TSNode) -> list[str]:
         return [f"~{_node_text(ident)}"] if ident is not None else []
     if node.type == "template_function":
         name = node.child_by_field_name("name") or _find_child(node, "identifier")
+        return _qualified_name_parts(name) if name is not None else []
+    if node.type == "template_type":
+        name = node.child_by_field_name("name") or _find_child(node, "type_identifier")
         return _qualified_name_parts(name) if name is not None else []
     if node.type == "qualified_identifier":
         scope = node.child_by_field_name("scope")

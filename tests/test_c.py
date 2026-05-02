@@ -187,6 +187,65 @@ def test_c_idempotent(tmp_path):
     assert len(graph.all_edges()) == edges1
 
 
+@needs_c
+def test_c_enums_unions_and_function_macros(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "types.c").write_text("""\
+typedef enum Color { RED, GREEN } Color;
+enum Mode { MODE_A };
+
+typedef union Value {
+    int i;
+    float f;
+} Value;
+
+union Raw {
+    int bits;
+};
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define LIMIT 10
+
+int choose(void) {
+    return MAX(1, LIMIT);
+}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edge_categories == {}
+
+    color = graph.get_node("src.types.Color")
+    assert color is not None
+    assert color.type == NodeType.TYPE
+    assert color.metadata["c_kind"] == "enum"
+
+    mode = graph.get_node("src.types.Mode")
+    assert mode is not None
+    assert mode.type == NodeType.TYPE
+
+    value = graph.get_node("src.types.Value")
+    assert value is not None
+    assert value.type == NodeType.CLASS
+    assert value.metadata["c_kind"] == "union"
+
+    raw = graph.get_node("src.types.Raw")
+    assert raw is not None
+    assert raw.type == NodeType.CLASS
+    assert raw.metadata["c_kind"] == "union"
+
+    macro = graph.get_node("src.types.MAX")
+    assert macro is not None
+    assert macro.type == NodeType.FUNCTION
+    assert macro.metadata["macro"] is True
+
+    targets = {edge.target for edge in graph.outgoing("src.types.choose", rel=RelType.CALLS)}
+    assert "src.types.MAX" in targets
+
+
 # --- C++ tests ---
 
 
@@ -475,6 +534,66 @@ void Server::run() {
 
     targets = {edge.target for edge in graph.outgoing("src.server.Server.run", rel=RelType.CALLS)}
     assert "src.server.Server.helper" in targets
+
+
+@needs_cpp
+def test_cpp_namespace_qualified_functions_are_not_methods(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "app.cpp").write_text("""\
+namespace util {
+void helper();
+}
+
+void util::helper() {}
+
+int main() {
+    util::helper();
+}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edge_categories == {}
+
+    helper = graph.get_node("src.app.util.helper")
+    assert helper is not None
+    assert helper.type == NodeType.FUNCTION
+
+    targets = {edge.target for edge in graph.outgoing("src.app.main", rel=RelType.CALLS)}
+    assert "src.app.util.helper" in targets
+
+
+@needs_cpp
+def test_cpp_qualified_template_base_classes(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "app.cpp").write_text("""\
+namespace api {
+class Base {};
+
+template <typename T>
+class TBase {};
+}
+
+class Server : public api::Base, private api::TBase<int> {};
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edge_categories == {}
+
+    server = graph.get_node("src.app.Server")
+    assert server is not None
+    assert server.type == NodeType.CLASS
+
+    targets = {edge.target for edge in graph.outgoing("src.app.Server", rel=RelType.INHERITS)}
+    assert "src.app.api.Base" in targets
+    assert "src.app.api.TBase" in targets
 
 
 @needs_cpp

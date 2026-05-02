@@ -167,7 +167,7 @@ external, or a resolver needs work.
 | Metal | `.metal` | `tree-sitter-cpp` |
 | Zig | `.zig` | `tree-sitter-zig` |
 
-All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. The C++ extractor also recognizes common header-only shapes such as class declarations, templates, and out-of-class member definitions. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` -- the metrics engine and scanner are shared.
+All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. The C/C++ extractor also recognizes enums, unions, function-like macros, qualified base classes, templates, and out-of-class member definitions. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` -- the metrics engine and scanner are shared.
 
 ## Structural hashing
 
