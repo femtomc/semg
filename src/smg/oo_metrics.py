@@ -303,11 +303,13 @@ def martin_metrics(graph: SemGraph) -> dict[str, dict]:
         instability = ce / (ca + ce) if (ca + ce) > 0 else 0.0
 
         # Abstractness: ratio of interfaces/abstract classes to total classes
-        classes_in_mod = [
-            m for m in members if graph.get_node(m) and graph.get_node(m).type.value in ("class", "interface")
+        class_nodes = [
+            node
+            for member in members
+            if (node := graph.get_node(member)) is not None and node.type.value in ("class", "interface")
         ]
-        abstract_count = sum(1 for m in classes_in_mod if graph.get_node(m).type == NodeType.INTERFACE)
-        total_classes = len(classes_in_mod)
+        abstract_count = sum(1 for node in class_nodes if node.type == NodeType.INTERFACE)
+        total_classes = len(class_nodes)
         abstractness = abstract_count / total_classes if total_classes > 0 else 0.0
 
         distance = abs(abstractness + instability - 1.0)
@@ -323,7 +325,7 @@ def martin_metrics(graph: SemGraph) -> dict[str, dict]:
     return result
 
 
-def sdp_violations(graph: SemGraph) -> list[dict]:
+def sdp_violations(graph: SemGraph, *, martin: dict[str, dict] | None = None) -> list[dict]:
     """Find Stable Dependencies Principle violations.
 
     A violation occurs when a stable module (low instability) depends on
@@ -333,7 +335,7 @@ def sdp_violations(graph: SemGraph) -> list[dict]:
     Checks all coupling edges (not just module-level imports) by mapping
     each endpoint to its containing module.
     """
-    metrics = martin_metrics(graph)
+    metrics = martin_metrics(graph) if martin is None else martin
     violations: list[dict] = []
 
     # Build node -> module mapping so member-level edges are attributed
@@ -392,6 +394,9 @@ def god_classes(
     wmc_threshold: int = 20,
     cbo_threshold: int = 5,
     lcom_threshold: int = 2,
+    wmc_data: dict[str, int] | None = None,
+    cbo_data: dict[str, int] | None = None,
+    lcom_data: dict[str, int] | None = None,
 ) -> list[dict]:
     """Detect God Classes: high complexity AND high coupling AND low cohesion.
 
@@ -402,9 +407,9 @@ def god_classes(
 
     Returns list of dicts with name and metric values.
     """
-    wmc_data = wmc(graph)
-    cbo_data = cbo(graph)
-    lcom_data = lcom4(graph)
+    wmc_data = wmc(graph) if wmc_data is None else wmc_data
+    cbo_data = cbo(graph) if cbo_data is None else cbo_data
+    lcom_data = lcom4(graph) if lcom_data is None else lcom_data
 
     results: list[dict] = []
     for name in wmc_data:

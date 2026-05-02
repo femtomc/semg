@@ -980,6 +980,14 @@ class TestLayeringViolationProperties:
         # Both edges are between nodes at the same layer (SCC), so both are violations
         assert len(violations) == 2
 
+    def test_self_loop_is_not_layering_violation(self):
+        """A recursive self-call is not an architectural back-dependency."""
+        g = SemGraph()
+        g.add_node(Node(name="f", type=NodeType.FUNCTION))
+        g.add_edge(Edge(source="f", target="f", rel=RelType.CALLS))
+
+        assert layering_violations(g) == []
+
     @given(random_graph())
     @settings(max_examples=100)
     def test_no_violations_implies_dag_on_layers(self, g: SemGraph):
@@ -990,6 +998,8 @@ class TestLayeringViolationProperties:
             coupling_rels = {"calls", "imports", "inherits", "implements", "depends_on"}
             for edge in g.all_edges():
                 if edge.rel.value in coupling_rels:
+                    if edge.source == edge.target:
+                        continue
                     sl = layers.get(edge.source)
                     tl = layers.get(edge.target)
                     if sl is not None and tl is not None:

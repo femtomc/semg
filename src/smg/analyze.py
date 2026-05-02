@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from smg import graph_metrics, oo_metrics
+from smg.analysis_context import AnalysisContext
 from smg.churn import ChurnResult, compute_churn
 from smg.graph import SemGraph
 
@@ -95,41 +95,42 @@ def run_analysis(
     r.edge_count = len(graph.all_edges())
 
     # Graph-theoretic
+    ctx = AnalysisContext(graph, include_betweenness=include_betweenness)
     step("Finding cycles...")
-    r.cycles = graph_metrics.find_cycles(graph)
+    r.cycles = ctx.cycles()
     step("Computing layers...")
-    r.layers = graph_metrics.topological_layers(graph)
+    r.layers = ctx.layers()
     step("Computing PageRank...")
-    r.pagerank = graph_metrics.pagerank(graph)
+    r.pagerank = ctx.pagerank()
     step("Computing betweenness centrality...")
-    r.betweenness = graph_metrics.betweenness_centrality(graph, include=include_betweenness)
+    r.betweenness = ctx.betweenness()
     step("Computing k-core decomposition...")
-    r.kcore = graph_metrics.kcore_decomposition(graph)
+    r.kcore = ctx.kcore()
     step("Detecting bridges...")
-    r.bridges = graph_metrics.detect_bridges(graph)
+    r.bridges = ctx.bridges()
 
     # OO metrics
     step("Computing class metrics (CK suite)...")
-    r.wmc = oo_metrics.wmc(graph)
-    r.dit = oo_metrics.dit(graph)
-    r.noc = oo_metrics.noc(graph)
-    r.cbo = oo_metrics.cbo(graph)
-    r.rfc = oo_metrics.rfc(graph)
-    r.lcom4 = oo_metrics.lcom4(graph)
+    r.wmc = ctx.wmc()
+    r.dit = ctx.dit()
+    r.noc = ctx.noc()
+    r.cbo = ctx.cbo()
+    r.rfc = ctx.rfc()
+    r.lcom4 = ctx.lcom4()
     step("Computing module metrics (Martin)...")
-    r.martin = oo_metrics.martin_metrics(graph)
+    r.martin = ctx.martin()
     step("Checking SDP violations...")
-    r.sdp_violations = oo_metrics.sdp_violations(graph)
+    r.sdp_violations = ctx.sdp_violations()
     step("Detecting dead code...")
-    r.dead_code = graph_metrics.dead_code(graph)
+    r.dead_code = ctx.dead_code()
     step("Checking layering violations...")
-    r.layering_violations = graph_metrics.layering_violations(graph)
+    r.layering_violations = ctx.layering_violations()
     step("Detecting code smells...")
-    r.god_classes = oo_metrics.god_classes(graph)
-    r.feature_envy = oo_metrics.feature_envy(graph)
-    r.shotgun_surgery = oo_metrics.shotgun_surgery(graph)
+    r.god_classes = ctx.god_classes()
+    r.feature_envy = ctx.feature_envy()
+    r.shotgun_surgery = ctx.shotgun_surgery()
     step("Detecting god files...")
-    r.god_files = graph_metrics.god_files(graph)
+    r.god_files = ctx.god_files()
 
     # Git churn
     if root is not None:
@@ -142,11 +143,11 @@ def run_analysis(
     # Full-only metrics
     if full:
         step("Computing max method complexity...")
-        r.max_method_cc = oo_metrics.max_method_cc(graph)
+        r.max_method_cc = ctx.max_method_cc()
         step("Computing fan-in/fan-out...")
-        r.fan_in_out = graph_metrics.fan_in_out(graph)
+        r.fan_in_out = ctx.fan_in_out()
         step("Computing HITS (hub/authority)...")
-        r.hits = graph_metrics.hits(graph)
+        r.hits = ctx.hits()
 
     # Hotspot synthesis
     step("Computing hotspots...")

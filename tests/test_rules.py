@@ -6,6 +6,7 @@ import os
 from click.testing import CliRunner
 
 from smg.cli import main
+from smg.concepts import Concept
 from smg.graph import SemGraph
 from smg.model import Edge, Node, NodeType, RelType
 from smg.rule_expr import evaluate_assertion, parse_assertion
@@ -224,6 +225,48 @@ def test_check_invariant_no_layering_violations():
     assert v.edges is not None
 
 
+def test_check_invariant_concept_boundaries():
+    g = SemGraph()
+    g.add_node(Node(name="app", type=NodeType.PACKAGE))
+    g.add_node(Node(name="app.ui", type=NodeType.MODULE))
+    g.add_node(Node(name="app.core", type=NodeType.MODULE))
+    g.add_node(Node(name="app.ui.render", type=NodeType.FUNCTION))
+    g.add_node(Node(name="app.core.compute", type=NodeType.FUNCTION))
+    g.add_edge(Edge(source="app", target="app.ui", rel=RelType.CONTAINS))
+    g.add_edge(Edge(source="app", target="app.core", rel=RelType.CONTAINS))
+    g.add_edge(Edge(source="app.ui", target="app.ui.render", rel=RelType.CONTAINS))
+    g.add_edge(Edge(source="app.core", target="app.core.compute", rel=RelType.CONTAINS))
+    g.add_edge(Edge(source="app.ui.render", target="app.core.compute", rel=RelType.CALLS))
+
+    r = Rule(name="boundaries", type="invariant", invariant="concept-boundaries")
+    v = check_invariant(
+        r,
+        g,
+        concepts=[
+            Concept(name="ui", prefixes=["app.ui"]),
+            Concept(name="core", prefixes=["app.core"]),
+        ],
+    )
+
+    assert v is not None
+    assert v.message == "ui->core: 1 unsanctioned cross-concept edge(s)"
+    assert v.edges == [{"source": "app.ui.render", "rel": "calls", "target": "app.core.compute"}]
+    assert v.witnesses is not None
+    assert v.witnesses[0].to_dict() == {
+        "kind": "edge",
+        "edges": [{"source": "app.ui.render", "rel": "calls", "target": "app.core.compute"}],
+    }
+
+
+def test_check_invariant_concept_boundaries_requires_concepts():
+    import pytest
+
+    g = SemGraph()
+    r = Rule(name="boundaries", type="invariant", invariant="concept-boundaries")
+    with pytest.raises(ValueError, match="requires at least one concept declaration"):
+        check_invariant(r, g)
+
+
 def test_check_invariant_unknown():
     import pytest
 
@@ -415,6 +458,56 @@ def test_cli_check_violation(tmp_path):
     assert data["violations"][0]["rule"] == "no-ui-db"
     assert "witnesses" in data["violations"][0]
     assert result.exit_code == 1
+
+
+def test_cli_check_concept_boundaries(tmp_path):
+    runner = _init_runner(tmp_path)
+    runner.invoke(main, ["add", "package", "app"])
+    runner.invoke(main, ["add", "module", "app.ui"])
+    runner.invoke(main, ["add", "module", "app.core"])
+    runner.invoke(main, ["add", "function", "app.ui.render"])
+    runner.invoke(main, ["add", "function", "app.core.compute"])
+    runner.invoke(main, ["link", "app", "contains", "app.ui"])
+    runner.invoke(main, ["link", "app", "contains", "app.core"])
+    runner.invoke(main, ["link", "app.ui", "contains", "app.ui.render"])
+    runner.invoke(main, ["link", "app.core", "contains", "app.core.compute"])
+    runner.invoke(main, ["link", "app.ui.render", "calls", "app.core.compute"])
+    runner.invoke(main, ["concept", "add", "ui", "--prefix", "app.ui"])
+    runner.invoke(main, ["concept", "add", "core", "--prefix", "app.core"])
+    add_rule = runner.invoke(main, ["rule", "add", "boundaries", "--invariant", "concept-boundaries"])
+    assert add_rule.exit_code == 0
+
+    result = runner.invoke(main, ["check", "--format", "json"])
+    data = json.loads(result.output)
+
+    assert result.exit_code == 1
+    assert data["status"] == "fail"
+    assert data["violations"] == [
+        {
+            "rule": "boundaries",
+            "type": "invariant",
+            "message": "ui->core: 1 unsanctioned cross-concept edge(s)",
+            "witnesses": [
+                {
+                    "kind": "edge",
+                    "edges": [
+                        {
+                            "source": "app.ui.render",
+                            "rel": "calls",
+                            "target": "app.core.compute",
+                        }
+                    ],
+                }
+            ],
+            "edges": [
+                {
+                    "source": "app.ui.render",
+                    "rel": "calls",
+                    "target": "app.core.compute",
+                }
+            ],
+        }
+    ]
 
 
 def test_cli_check_quantified_violation_json(tmp_path):

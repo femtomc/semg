@@ -177,7 +177,7 @@ def _tarjan_iterative(
 # --- Topological layering ---
 
 
-def topological_layers(graph: SemGraph) -> dict[str, int]:
+def topological_layers(graph: SemGraph, *, cycles: list[list[str]] | None = None) -> dict[str, int]:
     """Assign layer numbers based on dependency depth.
 
     Layer 0 = leaf nodes (no outgoing coupling deps). Each node's layer =
@@ -188,7 +188,7 @@ def topological_layers(graph: SemGraph) -> dict[str, int]:
         return {}
 
     # Find SCCs and condense
-    cycles = find_cycles(graph)
+    cycles = find_cycles(graph) if cycles is None else cycles
     scc_map: dict[str, str] = {}  # node -> SCC representative
     for scc in cycles:
         rep = scc[0]
@@ -696,7 +696,7 @@ def god_files(
 # --- Layering violations ---
 
 
-def layering_violations(graph: SemGraph) -> list[dict]:
+def layering_violations(graph: SemGraph, *, layers: dict[str, int] | None = None) -> list[dict]:
     """Find coupling edges where the source is at the same or lower layer than the target.
 
     In a well-layered architecture, dependencies should flow strictly
@@ -706,12 +706,14 @@ def layering_violations(graph: SemGraph) -> list[dict]:
 
     Returns list of dicts with source, target, rel, source_layer, target_layer.
     """
-    layers = topological_layers(graph)
+    layers = topological_layers(graph) if layers is None else layers
     if not layers:
         return []
 
     violations: list[dict] = []
     for edge in graph.iter_edges(rel_types=_COUPLING_RELS):
+        if edge.source == edge.target:
+            continue
         sl = layers.get(edge.source)
         tl = layers.get(edge.target)
         if sl is not None and tl is not None and sl <= tl:

@@ -14,6 +14,7 @@ from smg.cli import (
     err_console,
     main,
 )
+from smg.rules import KNOWN_INVARIANTS
 
 
 @main.group()
@@ -33,7 +34,7 @@ def rule() -> None:
 @click.option(
     "--invariant",
     default=None,
-    type=click.Choice(["no-cycles", "no-dead-code", "no-layering-violations"]),
+    type=click.Choice(sorted(KNOWN_INVARIANTS)),
     help="Structural invariant to enforce",
 )
 @click.option("--forall", "selector", default=None, help="Glob over subject node names for quantified rules")
@@ -59,6 +60,7 @@ def rule_add(
     Examples:
       smg rule add layering --deny "core.* -> ui.*"
       smg rule add no-db-calls --deny "api.* -[calls]-> db.*"
+      smg rule add boundaries --invariant concept-boundaries
       smg rule add acyclic --invariant no-cycles
       smg rule add acyclic-server --invariant no-cycles --scope bellboy.server
       smg rule add reachable --invariant no-dead-code --entry-points "main,cli.*"
@@ -201,10 +203,11 @@ def check(name: str | None, fmt: str | None, full: bool) -> None:
     import json as json_mod
 
     from smg.rules import check_all
-    from smg.storage import load_rules
+    from smg.storage import load_concepts, load_rules
 
     graph, root = _load()
     rules = load_rules(root)
+    concepts = load_concepts(root)
     fmt = _auto_fmt(fmt)
 
     if not rules:
@@ -222,7 +225,7 @@ def check(name: str | None, fmt: str | None, full: bool) -> None:
         rules = matched
 
     try:
-        violations = check_all(rules, graph)
+        violations = check_all(rules, graph, concepts=concepts)
     except ValueError as exc:
         err_console.print(f"[red]Error:[/] {exc}")
         sys.exit(EXIT_VALIDATION)

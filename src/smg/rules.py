@@ -6,9 +6,11 @@ import fnmatch
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from smg import oo_metrics
+from smg.analysis_context import AnalysisContext
+from smg.concepts import Concept, ConceptViolation, analyze_concepts
 from smg.graph import SemGraph
 from smg.model import Node, NodeType, RelType
 from smg.rule_expr import ParsedAssertion, evaluate_assertion, parse_assertion
@@ -29,6 +31,7 @@ _DENY_ANY_REL = re.compile(r"^(.+?)\s+->\s+(.+)$")
 
 KNOWN_INVARIANTS = frozenset(
     {
+        "concept-boundaries",
         "no-cycles",
         "no-dead-code",
         "no-layering-violations",
@@ -209,13 +212,36 @@ def check_deny(rule: Rule, graph: SemGraph, scope: str | None = None) -> Violati
     )
 
 
-def check_invariant(rule: Rule, graph: SemGraph) -> Violation | None:
+def check_invariant(
+    rule: Rule,
+    graph: SemGraph,
+    concepts: list[Concept] | None = None,
+    analysis_context: AnalysisContext | None = None,
+) -> Violation | None:
     """Check a structural invariant rule against the graph."""
     from smg import graph_metrics
 
     inv = rule.invariant
+    ctx = analysis_context or AnalysisContext(graph)
+    if inv == "concept-boundaries":
+        if not concepts:
+            raise ValueError("concept-boundaries requires at least one concept declaration")
+        analysis = analyze_concepts(graph, concepts)
+        if not analysis.violations:
+            return None
+        edges, witnesses = _concept_violation_witnesses(analysis.violations)
+        messages = "; ".join(
+            f"{violation.source}->{violation.target}: {violation.message}" for violation in analysis.violations
+        )
+        return Violation(
+            rule_name=rule.name,
+            rule_type="invariant",
+            message=messages,
+            edges=edges,
+            witnesses=witnesses,
+        )
     if inv == "no-cycles":
-        cycles = graph_metrics.find_cycles(graph)
+        cycles = ctx.cycles()
         if not cycles:
             return None
         minimal_cycles = [graph_metrics.minimal_cycle(graph, scc) for scc in cycles]
@@ -234,7 +260,7 @@ def check_invariant(rule: Rule, graph: SemGraph) -> Violation | None:
             all_names = list(graph.nodes.keys())
             for pattern in patterns:
                 entry_points.update(fnmatch.filter(all_names, pattern))
-        dead = graph_metrics.dead_code(graph, entry_points=entry_points)
+        dead = ctx.dead_code(entry_points)
         if not dead:
             return None
         return Violation(
@@ -245,7 +271,7 @@ def check_invariant(rule: Rule, graph: SemGraph) -> Violation | None:
             witnesses=[node_witness(node) for node in dead],
         )
     if inv == "no-layering-violations":
-        violations = graph_metrics.layering_violations(graph)
+        violations = ctx.layering_violations()
         if not violations:
             return None
         return Violation(
@@ -274,8 +300,9 @@ def _scope_graph_for_rule(graph: SemGraph, scope: str) -> SemGraph:
 class QuantifiedMetricCatalog:
     """Lazy metric bag for quantified rules."""
 
-    def __init__(self, graph: SemGraph) -> None:
+    def __init__(self, graph: SemGraph, analysis_context: AnalysisContext | None = None) -> None:
         self.graph = graph
+        self.analysis_context = analysis_context or AnalysisContext(graph)
         self._cache: dict[str, Any] = {}
 
     def facts_for(self, subject: str, identifiers: frozenset[str]) -> dict[str, Any]:
@@ -337,24 +364,36 @@ class QuantifiedMetricCatalog:
         if key in self._cache:
             return self._cache[key]
 
-        from smg import graph_metrics
-
         if key == "fan_in_out":
-            value = graph_metrics.fan_in_out(self.graph)
+            value = self.analysis_context.fan_in_out()
         elif key == "layers":
-            value = graph_metrics.topological_layers(self.graph)
+            value = self.analysis_context.layers()
         elif key == "pagerank":
-            value = graph_metrics.pagerank(self.graph)
+            value = self.analysis_context.pagerank()
         elif key == "betweenness":
-            value = graph_metrics.betweenness_centrality(self.graph)
+            value = self.analysis_context.betweenness()
         elif key == "kcore":
-            value = graph_metrics.kcore_decomposition(self.graph)
+            value = self.analysis_context.kcore()
         elif key == "dead":
-            value = set(graph_metrics.dead_code(self.graph))
+            value = set(self.analysis_context.dead_code())
         elif key == "in_cycle":
-            value = {node for cycle in graph_metrics.find_cycles(self.graph) for node in cycle}
+            value = {node for cycle in self.analysis_context.cycles() for node in cycle}
         elif key == "martin":
-            value = oo_metrics.martin_metrics(self.graph)
+            value = self.analysis_context.martin()
+        elif key == "wmc":
+            value = self.analysis_context.wmc()
+        elif key == "dit":
+            value = self.analysis_context.dit()
+        elif key == "noc":
+            value = self.analysis_context.noc()
+        elif key == "cbo":
+            value = self.analysis_context.cbo()
+        elif key == "rfc":
+            value = self.analysis_context.rfc()
+        elif key == "lcom4":
+            value = self.analysis_context.lcom4()
+        elif key == "max_method_cc":
+            value = self.analysis_context.max_method_cc()
         else:
             value = getattr(oo_metrics, key)(self.graph)
         self._cache[key] = value
@@ -412,6 +451,8 @@ def check_rule(
     rule: Rule,
     graph: SemGraph,
     *,
+    concepts: list[Concept] | None = None,
+    analysis_context: AnalysisContext | None = None,
     parsed_assertion: ParsedAssertion | None = None,
     metric_catalog: QuantifiedMetricCatalog | None = None,
 ) -> Violation | None:
@@ -423,31 +464,52 @@ def check_rule(
             rule,
             graph,
             parsed_assertion=parsed_assertion,
-            metric_catalog=metric_catalog,
+            metric_catalog=metric_catalog or QuantifiedMetricCatalog(graph, analysis_context=analysis_context),
         )
     if rule.scope:
         graph = _scope_graph_for_rule(graph, rule.scope)
+        analysis_context = None
     if rule.type == "invariant":
-        return check_invariant(rule, graph)
+        return check_invariant(rule, graph, concepts=concepts, analysis_context=analysis_context)
     raise ValueError(f"unknown rule type: {rule.type!r}")
 
 
-def check_all(rules: list[Rule], graph: SemGraph) -> list[Violation]:
+def check_all(rules: list[Rule], graph: SemGraph, concepts: list[Concept] | None = None) -> list[Violation]:
     """Check all rules, return list of violations."""
     parsed_assertions = {rule.name: parse_quantified_assertion(rule) for rule in rules if rule.type == "quantified"}
-    metric_catalog = QuantifiedMetricCatalog(graph) if parsed_assertions else None
+    analysis_context = AnalysisContext(graph)
+    metric_catalog = QuantifiedMetricCatalog(graph, analysis_context=analysis_context) if parsed_assertions else None
 
     violations: list[Violation] = []
     for rule in rules:
         violation = check_rule(
             rule,
             graph,
+            concepts=concepts,
+            analysis_context=analysis_context,
             parsed_assertion=parsed_assertions.get(rule.name),
             metric_catalog=metric_catalog,
         )
         if violation is not None:
             violations.append(violation)
     return violations
+
+
+def _concept_violation_witnesses(violations: list[ConceptViolation]) -> tuple[list[dict[str, Any]], list[Witness]]:
+    edges: list[dict[str, Any]] = []
+    witnesses: list[Witness] = []
+    for violation in violations:
+        for witness in violation.witnesses:
+            raw_edges = witness.get("edges")
+            if not isinstance(raw_edges, list):
+                continue
+            for edge in raw_edges:
+                if not isinstance(edge, dict):
+                    continue
+                edge_dict = dict(cast(dict[str, Any], edge))
+                edges.append(edge_dict)
+                witnesses.append(edge_witness(edge_dict))
+    return edges, witnesses
 
 
 def _legacy_witnesses(violation: Violation) -> list[Witness]:
