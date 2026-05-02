@@ -193,6 +193,29 @@ def test_diff_cli(tmp_path):
     assert data["summary"]["nodes_added"] == 1
 
 
+def test_diff_cli_invalid_ref_errors(tmp_path):
+    """CLI diff should reject invalid refs instead of treating them as empty graphs."""
+    import os
+
+    from click.testing import CliRunner
+
+    from smg.cli import main
+
+    os.chdir(tmp_path)
+    runner = CliRunner()
+    os.system(f"git init {tmp_path} -q")
+    os.system(f"git -C {tmp_path} config user.email test@test.com")
+    os.system(f"git -C {tmp_path} config user.name test")
+    (tmp_path / "README.md").write_text("test\n")
+    os.system(f"git -C {tmp_path} add -A && git -C {tmp_path} commit -q -m init")
+    runner.invoke(main, ["init"])
+    runner.invoke(main, ["add", "module", "app"])
+
+    result = runner.invoke(main, ["diff", "NOT_A_REF", "--format", "json"])
+    assert result.exit_code == 2
+    assert "invalid git ref: NOT_A_REF" in result.output
+
+
 def test_diff_rename_by_content_hash():
     """Exact content match detects a pure rename."""
     old = SemGraph()

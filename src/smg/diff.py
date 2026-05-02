@@ -10,6 +10,10 @@ from smg.model import Edge, Node
 from smg.storage import GRAPH_FILE, SMG_DIR
 
 
+class GitRefError(ValueError):
+    pass
+
+
 @dataclass
 class NodeChange:
     name: str
@@ -253,6 +257,9 @@ def load_graph_from_git(root: Path, ref: str = "HEAD") -> SemGraph | None:
     """
     graph_path = f"{SMG_DIR}/{GRAPH_FILE}"
     try:
+        if ref != "HEAD" and not _git_ref_exists(root, ref):
+            raise GitRefError(f"invalid git ref: {ref}")
+
         result = subprocess.run(
             ["git", "show", f"{ref}:{graph_path}"],
             capture_output=True,
@@ -289,3 +296,13 @@ def load_graph_from_git(root: Path, ref: str = "HEAD") -> SemGraph | None:
         graph.add_edge(edge)
 
     return graph
+
+
+def _git_ref_exists(root: Path, ref: str) -> bool:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        capture_output=True,
+        text=True,
+        cwd=root,
+    )
+    return result.returncode == 0

@@ -15,6 +15,11 @@ from smg.langs import ExtractResult, register
 from smg.metrics import BranchMap, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
+
+def _node_text(node: TSNode) -> str:
+    return (node.text or b"").decode()
+
+
 _BUILTINS = frozenset(
     {
         # C standard library
@@ -293,7 +298,7 @@ class _CExtractorBase:
         name_node = _find_child(node, "namespace_identifier")
         if name_node is None:
             return
-        ns_name = name_node.text.decode()
+        ns_name = _node_text(name_node)
         qualified = f"{parent_name}.{ns_name}"
 
         nodes.append(
@@ -323,7 +328,7 @@ class _CExtractorBase:
         name_node = _find_child(node, "type_identifier")
         if name_node is None:
             return
-        class_name = name_node.text.decode()
+        class_name = _node_text(name_node)
         qualified = f"{parent_name}.{class_name}"
 
         nodes.append(
@@ -349,7 +354,7 @@ class _CExtractorBase:
                     edges.append(
                         Edge(
                             source=qualified,
-                            target=child.text.decode(),
+                            target=_node_text(child),
                             rel=RelType.INHERITS,
                             metadata={"unresolved": True},
                         )
@@ -379,7 +384,7 @@ class _CExtractorBase:
         name_node = _find_child(node, "type_identifier")
         if name_node is None:
             return
-        struct_name = name_node.text.decode()
+        struct_name = _node_text(name_node)
         qualified = f"{parent_name}.{struct_name}"
 
         nodes.append(
@@ -409,7 +414,7 @@ class _CExtractorBase:
         name_node = _find_child(node, "identifier")
         if name_node is None:
             return
-        name = name_node.text.decode()
+        name = _node_text(name_node)
         if not name.isupper():
             return
         qualified = f"{parent_name}.{name}"
@@ -479,11 +484,10 @@ class _CExtractorBase:
             # Could be a destructor or special function
             destr = _find_child(decl, "destructor_name")
             if destr is not None:
-                return (
-                    f"~{_find_child(destr, 'identifier').text.decode()}" if _find_child(destr, "identifier") else None
-                )
+                ident = _find_child(destr, "identifier")
+                return f"~{_node_text(ident)}" if ident is not None else None
             return None
-        return name.text.decode()
+        return _node_text(name)
 
     def _extract_includes(
         self,
@@ -498,7 +502,7 @@ class _CExtractorBase:
                 if path_node is not None:
                     content = _find_child(path_node, "string_content")
                     if content is not None:
-                        target = content.text.decode()
+                        target = _node_text(content)
                         # Strip .h/.hpp extension, convert / to .
                         for ext in (".h", ".hpp", ".hxx"):
                             if target.endswith(ext):
@@ -545,7 +549,7 @@ class _CExtractorBase:
             return None
 
         if func.type == "identifier":
-            name = func.text.decode()
+            name = _node_text(func)
             if name in _BUILTINS:
                 return None
             # Skip macro-like calls (ALL_CAPS identifiers)
@@ -561,14 +565,14 @@ class _CExtractorBase:
             if class_name is not None:
                 obj = _find_child(func, "field_identifier")
                 if obj is not None:
-                    return (obj.text.decode(), False)
+                    return (_node_text(obj), False)
             # Unknown receiver — skip, these almost never resolve via suffix match
             return None
 
         if func.type == "template_function":
             name = _find_child(func, "identifier")
             if name is not None:
-                n = name.text.decode()
+                n = _node_text(name)
                 if n in _BUILTINS or (n.isupper() and len(n) > 1):
                     return None
                 return (n, False)
@@ -627,7 +631,7 @@ class CppExtractor(_CExtractorBase):
 
 
 class CppHeaderExtractor(_CExtractorBase):
-    extensions = [".hpp", ".hxx", ".cuh"]
+    extensions = [".hpp", ".hh", ".hxx", ".cuh"]
     branch_map = C_BRANCH_MAP
 
     def __init__(self) -> None:

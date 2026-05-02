@@ -310,6 +310,32 @@ def test_scan_since_cli(tmp_path):
     assert data["files"] >= 1
 
 
+@needs_tree_sitter
+def test_scan_since_invalid_ref_errors(tmp_path):
+    from click.testing import CliRunner
+
+    from smg.cli import main
+
+    root = tmp_path
+    os.chdir(root)
+    os.system(f"git init -q {root}")
+    os.system(f"git -C {root} config user.email test@test.com")
+    os.system(f"git -C {root} config user.name test")
+
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("def hello():\n    pass\n")
+    os.system(f"git -C {root} add -A && git -C {root} commit -q -m init")
+
+    runner = CliRunner()
+    runner.invoke(main, ["init"])
+
+    result = runner.invoke(main, ["scan", "--since", "NOT_A_REF", "--format", "json"])
+    assert result.exit_code == 2
+    assert "invalid git ref: NOT_A_REF" in result.output
+
+
 # --- Batch provenance ---
 
 

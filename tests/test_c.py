@@ -233,6 +233,27 @@ def test_cpp_scan(tmp_path):
 
 
 @needs_cpp
+def test_cpp_hh_header_scan(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "widget.hh").write_text("""\
+class Widget {
+public:
+    void run();
+};
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.files == 1
+    widget = graph.get_node("src.widget.Widget")
+    assert widget is not None
+    assert widget.type == NodeType.CLASS
+
+
+@needs_cpp
 def test_cpp_classes(tmp_path):
     root = _write_cpp_project(tmp_path)
     init_project(root)

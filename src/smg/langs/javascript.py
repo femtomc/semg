@@ -18,6 +18,11 @@ from smg.langs import ExtractResult, register
 from smg.metrics import JS_BRANCH_MAP, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
+
+def _node_text(node: TSNode) -> str:
+    return (node.text or b"").decode()
+
+
 # Common JS/TS builtins to skip
 _BUILTINS = frozenset(
     {
@@ -69,7 +74,7 @@ def _get_class_name(node: TSNode) -> str | None:
     """Extract class name — handles both identifier (JS) and type_identifier (TS)."""
     name = node.child_by_field_name("name")
     if name is not None:
-        return name.text.decode()
+        return _node_text(name)
     return None
 
 
@@ -105,10 +110,12 @@ class _JSExtractorBase:
                         self._extract_class(inner, source, parent_name, file_path, nodes, edges)
                     elif inner.type == "function_declaration":
                         self._extract_function(inner, source, parent_name, file_path, nodes, edges)
+                    elif inner.type in ("arrow_function", "function_expression"):
+                        self._extract_function_node(inner, "default", source, parent_name, file_path, nodes, edges)
                     elif inner.type == "lexical_declaration":
-                        self._extract_const(inner, parent_name, file_path, nodes, edges)
+                        self._extract_const(inner, source, parent_name, file_path, nodes, edges)
             elif child.type == "lexical_declaration":
-                self._extract_const(child, parent_name, file_path, nodes, edges)
+                self._extract_const(child, source, parent_name, file_path, nodes, edges)
             elif child.type == "interface_declaration":
                 self._extract_interface(child, parent_name, file_path, nodes, edges)
 
@@ -152,7 +159,7 @@ class _JSExtractorBase:
                             out_edges.append(
                                 Edge(
                                     source=qualified,
-                                    target=ident.text.decode(),
+                                    target=_node_text(ident),
                                     rel=RelType.INHERITS,
                                     metadata={"unresolved": True},
                                 )
@@ -163,7 +170,7 @@ class _JSExtractorBase:
                             out_edges.append(
                                 Edge(
                                     source=qualified,
-                                    target=ident.text.decode(),
+                                    target=_node_text(ident),
                                     rel=RelType.IMPLEMENTS,
                                     metadata={"unresolved": True},
                                 )
@@ -188,7 +195,7 @@ class _JSExtractorBase:
         name_node = node.child_by_field_name("name")
         if name_node is None:
             return
-        method_name = name_node.text.decode()
+        method_name = _node_text(name_node)
         qualified = f"{class_name}.{method_name}"
 
         meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
@@ -227,7 +234,19 @@ class _JSExtractorBase:
         name_node = node.child_by_field_name("name")
         if name_node is None:
             return
-        func_name = name_node.text.decode()
+        func_name = _node_text(name_node)
+        self._extract_function_node(node, func_name, source, parent_name, file_path, out_nodes, out_edges)
+
+    def _extract_function_node(
+        self,
+        node: TSNode,
+        func_name: str,
+        source: bytes,
+        parent_name: str,
+        file_path: str,
+        out_nodes: list[Node],
+        out_edges: list[Edge],
+    ) -> None:
         qualified = f"{parent_name}.{func_name}"
 
         meta = compute_metrics_and_hash(node, JS_BRANCH_MAP)
@@ -257,19 +276,26 @@ class _JSExtractorBase:
     def _extract_const(
         self,
         node: TSNode,
+        source: bytes,
         parent_name: str,
         file_path: str,
         out_nodes: list[Node],
         out_edges: list[Edge],
     ) -> None:
-        """Extract const/let declarations — only UPPER_CASE as constants."""
+        """Extract const/let declarations for function values and UPPER_CASE constants."""
         for child in node.children:
             if child.type != "variable_declarator":
                 continue
             name_node = child.child_by_field_name("name")
             if name_node is None or name_node.type != "identifier":
                 continue
-            var_name = name_node.text.decode()
+            var_name = _node_text(name_node)
+
+            value = child.child_by_field_name("value")
+            if value is not None and value.type in ("arrow_function", "function_expression"):
+                self._extract_function_node(value, var_name, source, parent_name, file_path, out_nodes, out_edges)
+                continue
+
             if not var_name.isupper():
                 continue
             qualified = f"{parent_name}.{var_name}"
@@ -296,7 +322,7 @@ class _JSExtractorBase:
         name_node = node.child_by_field_name("name")
         if name_node is None:
             return
-        iface_name = name_node.text.decode()
+        iface_name = _node_text(name_node)
         qualified = f"{parent_name}.{iface_name}"
         out_nodes.append(
             Node(
@@ -347,7 +373,7 @@ class _JSExtractorBase:
         # Get the string content
         for child in source_node.children:
             if child.type == "string_fragment":
-                raw = child.text.decode()
+                raw = _node_text(child)
                 path = self._strip_import_extension(raw)
                 if not path:
                     return None
@@ -426,7 +452,7 @@ class _JSExtractorBase:
     def _call_target(self, func_node: TSNode, class_name: str | None) -> tuple[str, bool] | None:
         """Resolve a call's function node to (target_name, is_resolved)."""
         if func_node.type == "identifier":
-            name = func_node.text.decode()
+            name = _node_text(func_node)
             if name in _BUILTINS:
                 return None
             return (name, False)
@@ -436,7 +462,7 @@ class _JSExtractorBase:
             prop = func_node.child_by_field_name("property")
             if obj is None or prop is None:
                 return None
-            prop_name = prop.text.decode()
+            prop_name = _node_text(prop)
 
             # this.method() -> ClassName.method
             if obj.type == "this" and class_name:
@@ -447,16 +473,16 @@ class _JSExtractorBase:
                 return None
 
             # console.log, etc — skip known builtins
-            if obj.type == "identifier" and obj.text.decode() in _BUILTINS:
+            if obj.type == "identifier" and _node_text(obj) in _BUILTINS:
                 return None
 
             # obj.method() -> "obj.method" (unresolved)
             if obj.type == "identifier":
-                return (f"{obj.text.decode()}.{prop_name}", False)
+                return (f"{_node_text(obj)}.{prop_name}", False)
 
             # deeper member_expression: a.b.c() -> "a.b.c"
             if obj.type == "member_expression":
-                return (f"{obj.text.decode()}.{prop_name}", False)
+                return (f"{_node_text(obj)}.{prop_name}", False)
 
         return None
 
@@ -465,7 +491,7 @@ class _JSExtractorBase:
         # Look for a comment sibling immediately before this node
         prev = node.prev_named_sibling
         if prev is not None and prev.type == "comment":
-            text = prev.text.decode()
+            text = _node_text(prev)
             # JSDoc: /** ... */
             if text.startswith("/**"):
                 # Extract first line of content

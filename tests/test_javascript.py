@@ -177,6 +177,35 @@ def test_ts_functions(tmp_path):
 
 
 @needs_ts
+def test_ts_arrow_and_function_expression_exports(tmp_path):
+    root = tmp_path
+    (root / "tsconfig.json").write_text("{}")
+    app = root / "src" / "app"
+    app.mkdir(parents=True)
+    (app / "handlers.ts").write_text("""\
+function helper(): string {
+  return "ok";
+}
+
+const localHandler = () => helper();
+export const exportedHandler = function (): string {
+  return helper();
+};
+export default () => helper();
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    for name in ["app.handlers.localHandler", "app.handlers.exportedHandler", "app.handlers.default"]:
+        node = graph.get_node(name)
+        assert node is not None
+        assert node.type == NodeType.FUNCTION
+        targets = {edge.target for edge in graph.outgoing(name, rel=RelType.CALLS)}
+        assert "app.handlers.helper" in targets
+
+
+@needs_ts
 def test_ts_constants(tmp_path):
     root = _write_ts_project(tmp_path)
     init_project(root)

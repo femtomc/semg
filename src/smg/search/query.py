@@ -159,6 +159,8 @@ def search_nodes(
                 )
             )
         return hits, total
+    except sqlite3.OperationalError as exc:
+        raise ValueError(f"invalid search query: {query!r}") from exc
     finally:
         if own_conn:
             conn.close()

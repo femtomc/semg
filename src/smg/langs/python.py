@@ -12,6 +12,11 @@ from smg.model import Edge, Node, NodeType, RelType
 _LANGUAGE = Language(tspython.language())
 _PARSER = Parser(_LANGUAGE)
 
+
+def _node_text(node: TSNode) -> str:
+    return (node.text or b"").decode()
+
+
 # Common builtins to skip (these never resolve to graph nodes)
 _BUILTINS = frozenset(
     {
@@ -37,8 +42,11 @@ _BUILTINS = frozenset(
         "float",
         "bool",
         "bytes",
+        "callable",
+        "chr",
         "list",
         "dict",
+        "dir",
         "set",
         "tuple",
         "frozenset",
@@ -50,10 +58,13 @@ _BUILTINS = frozenset(
         "abs",
         "round",
         "open",
+        "ord",
         "iter",
         "next",
         "any",
         "all",
+        "__import__",
+        "cls",
         "super",
         "property",
         "staticmethod",
@@ -100,8 +111,8 @@ class PythonExtractor:
         tree = _PARSER.parse(source)
         nodes: list[Node] = []
         edges: list[Edge] = []
-        self._walk_body(tree.root_node, source, module_name, file_path, nodes, edges)
-        self._extract_imports(tree.root_node, module_name, edges)
+        import_aliases = self._extract_imports(tree.root_node, module_name, edges)
+        self._walk_body(tree.root_node, source, module_name, file_path, nodes, edges, import_aliases=import_aliases)
         self._extract_dynamic_imports(tree.root_node, module_name, edges)
         return ExtractResult(nodes=nodes, edges=edges)
 
@@ -113,21 +124,52 @@ class PythonExtractor:
         file_path: str,
         nodes: list[Node],
         edges: list[Edge],
+        in_class: bool = False,
+        import_aliases: dict[str, str] | None = None,
     ) -> None:
         """Walk children of a block/module, extracting classes, functions, and assignments."""
+        aliases = import_aliases or {}
         for child in body_node.children:
             if child.type == "class_definition":
-                self._extract_class(child, source, parent_name, file_path, nodes, edges)
+                self._extract_class(child, source, parent_name, file_path, nodes, edges, import_aliases=aliases)
             elif child.type == "function_definition":
-                self._extract_function(child, source, parent_name, file_path, nodes, edges)
+                self._extract_function(
+                    child,
+                    source,
+                    parent_name,
+                    file_path,
+                    nodes,
+                    edges,
+                    in_class=in_class,
+                    import_aliases=aliases,
+                )
             elif child.type == "decorated_definition":
                 # Unwrap to the inner definition
                 decorators = [c for c in child.children if c.type == "decorator"]
                 inner = child.child_by_field_name("definition")
                 if inner is not None and inner.type == "class_definition":
-                    self._extract_class(inner, source, parent_name, file_path, nodes, edges, decorators)
+                    self._extract_class(
+                        inner,
+                        source,
+                        parent_name,
+                        file_path,
+                        nodes,
+                        edges,
+                        decorators,
+                        import_aliases=aliases,
+                    )
                 elif inner is not None and inner.type == "function_definition":
-                    self._extract_function(inner, source, parent_name, file_path, nodes, edges, decorators)
+                    self._extract_function(
+                        inner,
+                        source,
+                        parent_name,
+                        file_path,
+                        nodes,
+                        edges,
+                        decorators,
+                        in_class=in_class,
+                        import_aliases=aliases,
+                    )
             elif child.type == "expression_statement":
                 self._extract_assignment(child, parent_name, file_path, nodes, edges)
 
@@ -140,11 +182,13 @@ class PythonExtractor:
         out_nodes: list[Node],
         out_edges: list[Edge],
         decorators: list[TSNode] | None = None,
+        in_class: bool = False,
+        import_aliases: dict[str, str] | None = None,
     ) -> None:
         name_node = node.child_by_field_name("name")
         if name_node is None:
             return
-        class_name = name_node.text.decode()
+        class_name = _node_text(name_node)
         qualified = f"{parent_name}.{class_name}"
 
         out_nodes.append(
@@ -168,7 +212,7 @@ class PythonExtractor:
         if superclasses is not None:
             for arg in superclasses.children:
                 if arg.type == "identifier":
-                    base_name = arg.text.decode()
+                    base_name = _node_text(arg)
                     out_edges.append(
                         Edge(
                             source=qualified,
@@ -178,7 +222,7 @@ class PythonExtractor:
                         )
                     )
                 elif arg.type == "attribute":
-                    base_name = arg.text.decode()
+                    base_name = _node_text(arg)
                     out_edges.append(
                         Edge(
                             source=qualified,
@@ -205,7 +249,16 @@ class PythonExtractor:
         # Walk class body for methods and nested classes
         body = node.child_by_field_name("body")
         if body is not None:
-            self._walk_body(body, source, qualified, file_path, out_nodes, out_edges)
+            self._walk_body(
+                body,
+                source,
+                qualified,
+                file_path,
+                out_nodes,
+                out_edges,
+                in_class=True,
+                import_aliases=import_aliases,
+            )
 
     def _extract_function(
         self,
@@ -216,18 +269,14 @@ class PythonExtractor:
         out_nodes: list[Node],
         out_edges: list[Edge],
         decorators: list[TSNode] | None = None,
+        in_class: bool = False,
+        import_aliases: dict[str, str] | None = None,
     ) -> None:
         name_node = node.child_by_field_name("name")
         if name_node is None:
             return
-        func_name = name_node.text.decode()
+        func_name = _node_text(name_node)
         qualified = f"{parent_name}.{func_name}"
-
-        # Determine if this is a method (parent is a class) or a function
-        # We check by looking at whether the parent_name corresponds to a class
-        # by checking the parameters for 'self' or 'cls'
-        params = node.child_by_field_name("parameters")
-        is_method = self._has_self_or_cls(params)
 
         # Fused metrics + structure hash in a single AST walk
         meta = compute_metrics_and_hash(node, self.branch_map)
@@ -235,7 +284,7 @@ class PythonExtractor:
         out_nodes.append(
             Node(
                 name=qualified,
-                type=NodeType.METHOD if is_method else NodeType.FUNCTION,
+                type=NodeType.METHOD if in_class else NodeType.FUNCTION,
                 file=file_path,
                 line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
@@ -266,8 +315,8 @@ class PythonExtractor:
         # Extract calls from function body
         body = node.child_by_field_name("body")
         if body is not None:
-            class_name = parent_name if is_method else None
-            self._extract_calls(body, qualified, class_name, out_edges)
+            class_name = parent_name if in_class else None
+            self._extract_calls(body, qualified, class_name, out_edges, import_aliases or {})
 
     def _extract_calls(
         self,
@@ -275,6 +324,7 @@ class PythonExtractor:
         caller_name: str,
         class_name: str | None,
         out_edges: list[Edge],
+        import_aliases: dict[str, str],
     ) -> None:
         """Iteratively walk AST and extract call edges."""
         _skip = frozenset({"function_definition", "class_definition", "decorated_definition"})
@@ -284,7 +334,7 @@ class PythonExtractor:
             if node.type == "call":
                 func_node = node.child_by_field_name("function")
                 if func_node is not None:
-                    result = self._call_target(func_node, class_name)
+                    result = self._call_target(func_node, class_name, import_aliases)
                     if result is not None:
                         target, resolved = result
                         metadata = {} if resolved else {"unresolved": True}
@@ -300,16 +350,23 @@ class PythonExtractor:
                 if child.type not in _skip:
                     stack.append(child)
 
-    def _call_target(self, func_node: TSNode, class_name: str | None) -> tuple[str, bool] | None:
+    def _call_target(
+        self,
+        func_node: TSNode,
+        class_name: str | None,
+        import_aliases: dict[str, str],
+    ) -> tuple[str, bool] | None:
         """Resolve a call's function node to (target_name, is_resolved).
 
         Returns None to skip the call (dynamic/unparseable).
         """
         if func_node.type == "identifier":
-            name = func_node.text.decode()
+            name = _node_text(func_node)
             # Skip common builtins
             if name in _BUILTINS:
                 return None
+            if name in import_aliases:
+                return (import_aliases[name], False)
             return (name, False)  # unresolved — needs suffix matching
 
         if func_node.type == "attribute":
@@ -317,7 +374,7 @@ class PythonExtractor:
             attr = func_node.child_by_field_name("attribute")
             if obj is None or attr is None:
                 return None
-            attr_name = attr.text.decode()
+            attr_name = _node_text(attr)
 
             # self.method() or cls.method() — resolve to ClassName.method
             if obj.type == "identifier" and obj.text in (b"self", b"cls") and class_name:
@@ -331,12 +388,14 @@ class PythonExtractor:
 
             # obj.method() — try as dotted name, unresolved
             if obj.type == "identifier":
-                obj_name = obj.text.decode()
+                obj_name = _node_text(obj)
+                if obj_name in import_aliases:
+                    return (f"{import_aliases[obj_name]}.{attr_name}", False)
                 return (f"{obj_name}.{attr_name}", False)
 
             # module.sub.func() — full dotted name
             if obj.type == "attribute":
-                return (f"{obj.text.decode()}.{attr_name}", False)
+                return (f"{_node_text(obj)}.{attr_name}", False)
 
         return None
 
@@ -356,7 +415,7 @@ class PythonExtractor:
             left = child.child_by_field_name("left")
             if left is None or left.type != "identifier":
                 continue
-            var_name = left.text.decode()
+            var_name = _node_text(left)
             if not var_name.isupper():
                 continue
             qualified = f"{parent_name}.{var_name}"
@@ -376,8 +435,9 @@ class PythonExtractor:
         root: TSNode,
         module_name: str,
         out_edges: list[Edge],
-    ) -> None:
+    ) -> dict[str, str]:
         """Extract import statements as IMPORTS edges via full AST walk."""
+        aliases: dict[str, str] = {}
         root_children = frozenset(id(c) for c in root.children)
         stack: list[TSNode] = [root]
         while stack:
@@ -386,8 +446,27 @@ class PythonExtractor:
                 deferred = id(node) not in root_children
                 for name_node in node.children:
                     if name_node.type == "dotted_name":
-                        target = name_node.text.decode()
+                        target = _node_text(name_node)
+                        aliases.setdefault(target.split(".", 1)[0], target.split(".", 1)[0])
                         meta: dict = {"unresolved": True}
+                        if deferred:
+                            meta["deferred"] = True
+                        out_edges.append(
+                            Edge(
+                                source=module_name,
+                                target=target,
+                                rel=RelType.IMPORTS,
+                                metadata=meta,
+                            )
+                        )
+                    elif name_node.type == "aliased_import":
+                        target_node = name_node.child_by_field_name("name")
+                        alias_node = name_node.child_by_field_name("alias")
+                        if target_node is None or alias_node is None:
+                            continue
+                        target = _node_text(target_node)
+                        aliases[_node_text(alias_node)] = target
+                        meta = {"unresolved": True}
                         if deferred:
                             meta["deferred"] = True
                         out_edges.append(
@@ -402,6 +481,7 @@ class PythonExtractor:
                 deferred = id(node) not in root_children
                 target = self._resolve_import_from(node, module_name)
                 if target is not None:
+                    aliases.update(self._import_from_aliases(node, target))
                     meta = {"unresolved": True}
                     if deferred:
                         meta["deferred"] = True
@@ -417,6 +497,27 @@ class PythonExtractor:
                 pass  # skip `from __future__ import ...`
             for child in node.children:
                 stack.append(child)
+        return aliases
+
+    def _import_from_aliases(self, node: TSNode, module_target: str) -> dict[str, str]:
+        aliases: dict[str, str] = {}
+        seen_import = False
+        for child in node.children:
+            if child.type == "import":
+                seen_import = True
+                continue
+            if not seen_import:
+                continue
+            if child.type == "dotted_name":
+                imported = _node_text(child)
+                aliases[imported.split(".", 1)[0]] = f"{module_target}.{imported}"
+            elif child.type == "aliased_import":
+                name_node = child.child_by_field_name("name")
+                alias_node = child.child_by_field_name("alias")
+                if name_node is None or alias_node is None:
+                    continue
+                aliases[_node_text(alias_node)] = f"{module_target}.{_node_text(name_node)}"
+        return aliases
 
     def _extract_dynamic_imports(
         self,
@@ -432,7 +533,7 @@ class PythonExtractor:
             if node.type == "call":
                 func = node.child_by_field_name("function")
                 if func is not None:
-                    fname = func.text.decode()
+                    fname = _node_text(func)
                     if fname in _DYNAMIC_IMPORT_FUNCS:
                         args = node.child_by_field_name("arguments")
                         if args is not None:
@@ -457,11 +558,13 @@ class PythonExtractor:
     @staticmethod
     def _string_literal_value(string_node: TSNode) -> str | None:
         """Extract the text content of a tree-sitter string node."""
+        if any(child.type == "interpolation" for child in string_node.children):
+            return None
         content = next(
             (c for c in string_node.children if c.type == "string_content"),
             None,
         )
-        return content.text.decode() if content is not None else None
+        return _node_text(content) if content is not None else None
 
     def _resolve_import_from(self, node: TSNode, module_name: str) -> str | None:
         """Resolve a from...import statement to a target module name.
@@ -480,7 +583,7 @@ class PythonExtractor:
         # Absolute import: from X.Y import Z
         mod_node = node.child_by_field_name("module_name")
         if mod_node is not None:
-            return mod_node.text.decode()
+            return _node_text(mod_node)
         return None
 
     def _resolve_relative_import(self, rel_node: TSNode, module_name: str) -> str | None:
@@ -499,7 +602,7 @@ class PythonExtractor:
                 dotted_node = child
 
         # Count dots for relative depth
-        dot_count = len(prefix_node.text.decode()) if prefix_node else 0
+        dot_count = len(_node_text(prefix_node)) if prefix_node else 0
         if dot_count == 0:
             return None
 
@@ -510,7 +613,7 @@ class PythonExtractor:
 
         base_parts = parts[:-dot_count]
         if dotted_node is not None:
-            target = ".".join(base_parts + [dotted_node.text.decode()])
+            target = ".".join(base_parts + [_node_text(dotted_node)])
         else:
             # from . import X -> import from parent package
             target = ".".join(base_parts) if base_parts else None
@@ -531,28 +634,20 @@ class PythonExtractor:
         # Get the string content (strip quotes)
         content_node = next((c for c in expr.children if c.type == "string_content"), None)
         if content_node is not None:
-            return content_node.text.decode().strip()
+            return _node_text(content_node).strip()
         return None
-
-    def _has_self_or_cls(self, params: TSNode | None) -> bool:
-        if params is None:
-            return False
-        for child in params.children:
-            if child.type == "identifier" and child.text in (b"self", b"cls"):
-                return True
-        return False
 
     def _decorator_name(self, dec_node: TSNode) -> str | None:
         """Extract the name from a decorator node."""
         for child in dec_node.children:
             if child.type == "identifier":
-                return child.text.decode()
+                return _node_text(child)
             if child.type == "attribute":
-                return child.text.decode()
+                return _node_text(child)
             if child.type == "call":
                 func = child.child_by_field_name("function")
                 if func is not None:
-                    return func.text.decode()
+                    return _node_text(func)
         return None
 
 

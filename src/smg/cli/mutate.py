@@ -219,6 +219,7 @@ def update(
     help="Only rescan files changed since REF (implies --clean)",
 )
 @click.option("--exclude", multiple=True, help="Additional exclude patterns (repeatable)")
+@click.option("--jobs", default=1, type=int, show_default=True, help="Parallel extractor worker processes")
 @click.option(
     "--format",
     "fmt",
@@ -232,6 +233,7 @@ def scan(
     changed: bool,
     since: str | None,
     exclude: tuple[str, ...],
+    jobs: int,
     fmt: str | None,
 ) -> None:
     """Scan source files with tree-sitter and populate the graph.
@@ -250,16 +252,23 @@ def scan(
     Manual nodes/edges (source=manual) are preserved across --clean rescans.
     """
     try:
-        from smg.scan import changed_files, scan_paths
+        from smg.scan import changed_files, scan_paths, skipped_edge_advice
     except ImportError:
         err_console.print("[red]Error:[/] tree-sitter not installed. Install with: [bold]uv pip install smg\\[scan][/]")
         sys.exit(EXIT_VALIDATION)
 
     graph, root = _load()
+    if jobs < 1:
+        err_console.print("[red]Error:[/] --jobs must be at least 1.")
+        sys.exit(EXIT_VALIDATION)
 
     if changed or since:
         ref = since or "HEAD"
-        file_list = changed_files(root, ref)
+        try:
+            file_list = changed_files(root, ref)
+        except ValueError as exc:
+            err_console.print(f"[red]Error:[/] {exc}")
+            sys.exit(EXIT_VALIDATION)
         if not file_list:
             fmt = _auto_fmt(fmt)
             if fmt == "json":
@@ -323,6 +332,7 @@ def scan(
         clean=clean,
         excludes=list(exclude) or None,
         on_progress=progress_cb,
+        jobs=jobs,
     )
 
     if progress_ctx is not None:
@@ -344,9 +354,13 @@ def scan(
             "edges_added": stats.edges_added,
             "edges_removed": stats.edges_removed,
             "skipped_edges": stats.skipped_edges,
+            "skipped_edge_categories": stats.skipped_edge_categories,
+            "skipped_edge_advice": skipped_edge_advice(stats.skipped_edge_categories),
             "languages": stats.lang_counts,
             "types": stats.type_counts,
         }
+        if stats.skipped_edge_samples:
+            data["skipped_edge_samples"] = stats.skipped_edge_samples
         if stats.orphaned_manual_edges:
             data["orphaned_manual_edges"] = stats.orphaned_manual_edges
         click.echo(json.dumps(data, indent=2))
@@ -368,6 +382,13 @@ def scan(
         )
         if stats.skipped_edges:
             table.add_row("Skipped", f"{stats.skipped_edges} unresolved")
+            table.add_row(
+                "Skipped by kind",
+                ", ".join(f"{count} {kind}" for kind, count in sorted(stats.skipped_edge_categories.items())),
+            )
+            top_advice = skipped_edge_advice(stats.skipped_edge_categories)[:3]
+            for item in top_advice:
+                table.add_row(f"Hint: {item['category']}", str(item["hint"]))
         # Warn if most edges were skipped (likely scanned too narrow a scope)
         total_edges = stats.edges_added + stats.skipped_edges
         if stats.skipped_edges > 0 and total_edges > 0:
@@ -379,6 +400,14 @@ def scan(
                     " to resolve cross-module edges."
                 )
         console.print(table)
+
+        if stats.skipped_edge_samples:
+            console.print("[dim]Skipped edge examples:[/]")
+            for sample in stats.skipped_edge_samples[:5]:
+                console.print(
+                    f"  {sample['source']} [dim]--{sample['rel']}-->[/] "
+                    f"{sample['target']} [dim]({sample['category']}: {sample['reason']})[/]"
+                )
 
         if stats.orphaned_manual_edges:
             console.print(f"\n[yellow]Warning:[/] {len(stats.orphaned_manual_edges)} manual edge(s) orphaned:")
@@ -558,6 +587,10 @@ def batch(fmt: str | None) -> None:
                     stats["ops"].append({"line": line_no, "error": f"cannot resolve: {name!r}"})
                     continue
                 node = graph.get_node(matches[0])
+                if node is None:
+                    stats["errors"] += 1
+                    stats["ops"].append({"line": line_no, "error": f"cannot resolve: {name!r}"})
+                    continue
                 if "type" in cmd:
                     node.type = NodeType(cmd["type"])
                 if "file" in cmd:

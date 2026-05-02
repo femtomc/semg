@@ -199,6 +199,36 @@ def test_scan_methods(tmp_path):
 
 
 @needs_tree_sitter
+def test_scan_class_contained_functions_are_methods(tmp_path):
+    """Static/class methods and no-arg class functions remain class methods."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "factory.py").write_text("""\
+class Factory:
+    @staticmethod
+    def build(value):
+        return value
+
+    @classmethod
+    def create(cls, value):
+        return cls()
+
+    def no_args():
+        return 1
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    for name in ["app.factory.Factory.build", "app.factory.Factory.create", "app.factory.Factory.no_args"]:
+        node = graph.get_node(name)
+        assert node is not None
+        assert node.type == NodeType.METHOD
+
+
+@needs_tree_sitter
 def test_scan_functions(tmp_path):
     root = _write_python_project(tmp_path)
     init_project(root)
@@ -267,6 +297,65 @@ def test_scan_imports(tmp_path):
     edges = graph.outgoing("mylib.core", rel=RelType.IMPORTS)
     targets = {e.target for e in edges}
     assert "mylib" in targets
+
+
+@needs_tree_sitter
+def test_scan_resolves_calls_through_python_import_aliases(tmp_path):
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "helpers.py").write_text("""\
+class Worker:
+    pass
+
+
+def helper():
+    pass
+""")
+    (pkg / "core.py").write_text("""\
+import app.helpers as helpers_mod
+from .helpers import helper, Worker as W
+from . import helpers
+
+
+def main():
+    helper()
+    W()
+    helpers.helper()
+    helpers_mod.helper()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    edges = graph.outgoing("app.core.main", rel=RelType.CALLS)
+    targets = {edge.target for edge in edges}
+    assert "app.helpers.helper" in targets
+    assert "app.helpers.Worker" in targets
+    assert stats.skipped_edge_categories.get("unresolved_local", 0) == 0
+
+
+@needs_tree_sitter
+def test_scan_resolves_bare_class_constructor_calls(tmp_path):
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("""\
+class _Worker:
+    pass
+
+
+def make_worker():
+    return _Worker()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    edges = graph.outgoing("app.core.make_worker", rel=RelType.CALLS)
+    assert [edge.target for edge in edges] == ["app.core._Worker"]
 
 
 @needs_tree_sitter
@@ -460,6 +549,33 @@ class Engine:
 
 
 @needs_tree_sitter
+def test_scan_calls_inherited_self_method(tmp_path):
+    """self.method() resolves to a base-class method when not overridden."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "engine.py").write_text("""\
+class Base:
+    def start(self):
+        pass
+
+
+class Engine(Base):
+    def run(self):
+        self.start()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    edges = graph.outgoing("app.engine.Engine.run", rel=RelType.CALLS)
+    targets = {e.target for e in edges}
+    assert "app.engine.Base.start" in targets
+    assert not any(sample["target"] == "app.engine.Engine.start" for sample in stats.skipped_edge_samples)
+
+
+@needs_tree_sitter
 def test_scan_calls_between_modules(tmp_path):
     """Cross-module call resolved via name matching."""
     root = tmp_path
@@ -526,6 +642,186 @@ def main():
 
     edges = graph.outgoing("app.core.main", rel=RelType.CALLS)
     assert len(edges) == 0
+
+
+@needs_tree_sitter
+def test_scan_records_skipped_edge_samples(tmp_path):
+    """Unresolved edges include bounded examples for diagnostics."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("""\
+def main():
+    missing_helper()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edges == 1
+    assert stats.skipped_edge_samples == [
+        {
+            "source": "app.core.main",
+            "rel": "calls",
+            "target": "missing_helper",
+            "reason": "unresolved target",
+            "category": "unresolved_local",
+        }
+    ]
+    assert stats.skipped_edge_categories == {"unresolved_local": 1}
+
+
+@needs_tree_sitter
+def test_scan_cli_json_reports_skipped_edge_samples(tmp_path):
+    """The CLI exposes skipped edge examples in machine-readable output."""
+    from click.testing import CliRunner
+
+    from smg.cli import main
+
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("""\
+def main():
+    missing_helper()
+""")
+    os.chdir(root)
+    runner = CliRunner()
+    runner.invoke(main, ["init"])
+
+    result = runner.invoke(main, ["scan", "src/", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["skipped_edges"] == 1
+    assert data["skipped_edge_categories"] == {"unresolved_local": 1}
+    assert data["skipped_edge_advice"] == [
+        {
+            "category": "unresolved_local",
+            "count": 1,
+            "hint": "Likely local resolver gap; inspect samples and add an extractor or resolver regression test.",
+        }
+    ]
+    assert data["skipped_edge_samples"][0]["target"] == "missing_helper"
+    assert data["skipped_edge_samples"][0]["category"] == "unresolved_local"
+
+
+@needs_tree_sitter
+def test_scan_classifies_skipped_edges(tmp_path):
+    """Skipped-edge categories separate local gaps from attribute and library calls."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("""\
+import ctypes
+import app.missing
+
+def main(items):
+    items.append(1)
+    ctypes.CDLL("libx.so")
+    app.missing.helper()
+    missing_helper()
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    categories = stats.skipped_edge_categories
+    assert categories["attribute_call"] >= 1
+    assert categories["external_call"] >= 1
+    assert categories["missing_scan_scope"] >= 1
+    assert categories["unresolved_local"] >= 1
+
+    samples = {(sample["target"], sample["category"]) for sample in stats.skipped_edge_samples}
+    assert ("items.append", "attribute_call") in samples
+    assert ("ctypes.CDLL", "external_call") in samples
+    assert ("app.missing.helper", "missing_scan_scope") in samples
+    assert ("missing_helper", "unresolved_local") in samples
+
+
+@needs_tree_sitter
+def test_scan_classifies_external_decorators(tmp_path):
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "core.py").write_text("""\
+from dataclasses import dataclass
+
+
+@dataclass
+class Config:
+    value: int
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edge_categories["decorator"] == 1
+    assert any(sample["category"] == "decorator" for sample in stats.skipped_edge_samples)
+
+
+@needs_tree_sitter
+def test_scan_skips_partial_f_string_dynamic_imports(tmp_path):
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "plugins.py").write_text("""\
+def load(name):
+    return __import__(f"app.plugins.{name}")
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.skipped_edge_categories == {}
+
+
+@needs_tree_sitter
+def test_scan_parallel_matches_serial(tmp_path):
+    """Parallel extraction merges in the same order as serial extraction."""
+    root = tmp_path
+    pkg = root / "src" / "app"
+    pkg.mkdir(parents=True)
+    (pkg / "__init__.py").touch()
+    (pkg / "a.py").write_text("""\
+def helper():
+    pass
+
+def main():
+    helper()
+    missing_a()
+""")
+    (pkg / "b.py").write_text("""\
+from app.a import helper
+
+def run(items):
+    helper()
+    items.append(1)
+""")
+    init_project(root)
+
+    serial_graph = load_graph(root)
+    serial_stats = scan_paths(serial_graph, root, [root / "src"], jobs=1)
+    parallel_graph = load_graph(root)
+    parallel_stats = scan_paths(parallel_graph, root, [root / "src"], jobs=2)
+
+    assert _graph_records(parallel_graph) == _graph_records(serial_graph)
+    assert parallel_stats.skipped_edges == serial_stats.skipped_edges
+    assert parallel_stats.skipped_edge_categories == serial_stats.skipped_edge_categories
+    assert parallel_stats.skipped_edge_samples == serial_stats.skipped_edge_samples
+    assert parallel_stats.lang_counts == serial_stats.lang_counts
+    assert parallel_stats.type_counts == serial_stats.type_counts
+
+
+def _graph_records(graph):
+    return sorted(
+        [json.dumps(node.to_dict(), sort_keys=True) for node in graph.all_nodes()]
+        + [json.dumps(edge.to_dict(), sort_keys=True) for edge in graph.all_edges()]
+    )
 
 
 @needs_tree_sitter
@@ -613,6 +909,32 @@ def test_scan_clean_removes_deleted_file_nodes(tmp_path):
     # b.py nodes should survive
     assert graph.get_node("app.b") is not None
     assert graph.get_node("app.b.bar") is not None
+
+
+@needs_tree_sitter
+def test_scan_clean_prunes_empty_synthetic_packages(tmp_path):
+    """Deleting the last file under a synthetic package removes its package chain."""
+    root = tmp_path
+    lib = root / "src" / "app" / "lib"
+    lib.mkdir(parents=True)
+    (lib / "util.py").write_text("def helper():\n    pass\n")
+
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    assert graph.get_node("src") is not None
+    assert graph.get_node("src.app") is not None
+    assert graph.get_node("src.app.lib") is not None
+    assert graph.get_node("src.app.lib.util") is not None
+
+    (lib / "util.py").unlink()
+    scan_paths(graph, root, [root / "src"], clean=True)
+
+    assert graph.get_node("src.app.lib.util") is None
+    assert graph.get_node("src.app.lib") is None
+    assert graph.get_node("src.app") is None
+    assert graph.get_node("src") is None
 
 
 # --- .smgignore path pattern tests ---

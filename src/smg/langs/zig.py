@@ -11,6 +11,11 @@ from smg.langs import ExtractResult, register
 from smg.metrics import BranchMap, compute_metrics_and_hash
 from smg.model import Edge, Node, NodeType, RelType
 
+
+def _node_text(node: TSNode) -> str:
+    return (node.text or b"").decode()
+
+
 _LANGUAGE = Language(tszig.language())
 _PARSER = Parser(_LANGUAGE)
 
@@ -97,7 +102,7 @@ class ZigExtractor:
         name_node = _find_child(node, "identifier")
         if name_node is None:
             return
-        var_name = name_node.text.decode()
+        var_name = _node_text(name_node)
 
         # Check if it's a struct declaration
         struct_node = _find_child(node, "struct_declaration")
@@ -181,7 +186,7 @@ class ZigExtractor:
         name_node = _find_child(node, "identifier")
         if name_node is None:
             return
-        func_name = name_node.text.decode()
+        func_name = _node_text(name_node)
         qualified = f"{parent_name}.{func_name}"
 
         # Detect if this is a method (has self parameter)
@@ -226,7 +231,7 @@ class ZigExtractor:
         content = _find_child(string_node, "string_content")
         if content is None:
             return
-        test_name = content.text.decode().replace(" ", "_")
+        test_name = _node_text(content).replace(" ", "_")
         qualified = f"{module_name}.test_{test_name}"
 
         nodes.append(
@@ -260,7 +265,7 @@ class ZigExtractor:
                     if string_node is not None:
                         content = _find_child(string_node, "string_content")
                         if content is not None:
-                            target = content.text.decode()
+                            target = _node_text(content)
                             edges.append(
                                 Edge(
                                     source=module_name,
@@ -309,7 +314,7 @@ class ZigExtractor:
             return None
 
         if func.type == "identifier":
-            name = func.text.decode()
+            name = _node_text(func)
             if name in _BUILTINS:
                 return None
             return (name, False)
@@ -337,7 +342,7 @@ class ZigExtractor:
     def _field_expression_parts(self, node: TSNode) -> list[str]:
         """Flatten a.b.c field_expression to ['a', 'b', 'c']."""
         if node.type == "identifier":
-            return [node.text.decode()]
+            return [_node_text(node)]
         if node.type == "field_expression":
             parts = []
             for child in node.children:

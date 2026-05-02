@@ -499,6 +499,14 @@ def test_cli_search_no_results(tmp_path):
     assert "No results" in result.output
 
 
+def test_cli_search_malformed_query_errors(tmp_path):
+    runner = _build_search_graph(tmp_path)
+    result = runner.invoke(main, ["search", "foo OR", "--json"])
+
+    assert result.exit_code == 2
+    assert "invalid search query: 'foo OR'" in result.output
+
+
 def test_cli_search_header_lowercase(tmp_path):
     runner = _build_search_graph(tmp_path)
     result = runner.invoke(main, ["search", "truncate"])
