@@ -168,6 +168,7 @@ def test_c_metrics(tmp_path):
     scan_paths(graph, root, [root / "src"])
 
     listen = graph.get_node("src.server.server_listen")
+    assert listen is not None
     assert "metrics" in listen.metadata
     m = listen.metadata["metrics"]
     assert m["cyclomatic_complexity"] >= 3
@@ -254,6 +255,31 @@ public:
 
 
 @needs_cpp
+def test_cpp_h_header_scan(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "widget.h").write_text("""\
+class Widget {
+public:
+    void run();
+};
+""")
+    init_project(root)
+    graph = load_graph(root)
+    stats = scan_paths(graph, root, [root / "src"])
+
+    assert stats.files == 1
+    widget = graph.get_node("src.widget.Widget")
+    assert widget is not None
+    assert widget.type == NodeType.CLASS
+
+    run = graph.get_node("src.widget.Widget.run")
+    assert run is not None
+    assert run.type == NodeType.METHOD
+
+
+@needs_cpp
 def test_cpp_classes(tmp_path):
     root = _write_cpp_project(tmp_path)
     init_project(root)
@@ -323,8 +349,132 @@ def test_cpp_calls(tmp_path):
 
     edges = graph.outgoing("src.app.app.Server.run", rel=RelType.CALLS)
     targets = {e.target for e in edges}
-    # listen() is called — should resolve to Server.listen or just "listen"
-    assert len(targets) >= 1
+    assert "src.app.app.Server.listen" in targets
+
+
+@needs_cpp
+def test_cpp_out_of_class_method_definitions(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "server.cpp").write_text("""\
+class Server {
+public:
+    void run();
+    void listen();
+};
+
+void Server::run() {
+    listen();
+}
+
+void Server::listen() {}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    run = graph.get_node("src.server.Server.run")
+    assert run is not None
+    assert run.type == NodeType.METHOD
+    assert "metrics" in run.metadata
+
+    listen = graph.get_node("src.server.Server.listen")
+    assert listen is not None
+    assert listen.type == NodeType.METHOD
+
+    targets = {edge.target for edge in graph.outgoing("src.server.Server.run", rel=RelType.CALLS)}
+    assert "src.server.Server.listen" in targets
+
+
+@needs_cpp
+def test_cpp_constructors_and_destructors(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "server.cpp").write_text("""\
+class Server {
+public:
+    Server();
+    ~Server();
+};
+
+Server::Server() {}
+Server::~Server() {}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    ctor = graph.get_node("src.server.Server.Server")
+    assert ctor is not None
+    assert ctor.type == NodeType.METHOD
+
+    dtor = graph.get_node("src.server.Server.~Server")
+    assert dtor is not None
+    assert dtor.type == NodeType.METHOD
+
+
+@needs_cpp
+def test_cpp_template_declarations(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "box.cpp").write_text("""\
+template <typename T>
+class Box {
+public:
+    T get() { return value_; }
+private:
+    T value_;
+};
+
+template <typename T>
+T identity(T value) {
+    return value;
+}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    box = graph.get_node("src.box.Box")
+    assert box is not None
+    assert box.type == NodeType.CLASS
+
+    get = graph.get_node("src.box.Box.get")
+    assert get is not None
+    assert get.type == NodeType.METHOD
+
+    identity = graph.get_node("src.box.identity")
+    assert identity is not None
+    assert identity.type == NodeType.FUNCTION
+
+
+@needs_cpp
+def test_cpp_qualified_calls(tmp_path):
+    root = tmp_path
+    src = root / "src"
+    src.mkdir()
+    (src / "server.cpp").write_text("""\
+class Server {
+public:
+    static void helper();
+    void run();
+};
+
+void Server::helper() {}
+
+void Server::run() {
+    Server::helper();
+}
+""")
+    init_project(root)
+    graph = load_graph(root)
+    scan_paths(graph, root, [root / "src"])
+
+    targets = {edge.target for edge in graph.outgoing("src.server.Server.run", rel=RelType.CALLS)}
+    assert "src.server.Server.helper" in targets
 
 
 @needs_cpp
@@ -335,6 +485,7 @@ def test_cpp_metrics(tmp_path):
     scan_paths(graph, root, [root / "src"])
 
     listen = graph.get_node("src.app.app.Server.listen")
+    assert listen is not None
     assert "metrics" in listen.metadata
     m = listen.metadata["metrics"]
     assert m["cyclomatic_complexity"] >= 2

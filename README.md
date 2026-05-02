@@ -161,12 +161,13 @@ external, or a resolver needs work.
 | Python | `.py` | `tree-sitter-python` |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | `tree-sitter-javascript` |
 | TypeScript | `.ts`, `.tsx` | `tree-sitter-typescript` |
-| C/C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx` | `tree-sitter-c` |
-| CUDA | `.cu`, `.cuh` | `tree-sitter-c` (C++ parser) |
+| C | `.c`, `.h` | `tree-sitter-c` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx`, and C++-style `.h` headers | `tree-sitter-cpp` |
+| CUDA | `.cu`, `.cuh` | `tree-sitter-cpp` |
 | Metal | `.metal` | `tree-sitter-cpp` |
 | Zig | `.zig` | `tree-sitter-zig` |
 
-All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` -- the metrics engine and scanner are shared.
+All languages extract: classes/structs, functions, methods, constants, containment, imports, inheritance, call graph, and per-function metrics. The C++ extractor also recognizes common header-only shapes such as class declarations, templates, and out-of-class member definitions. Adding a language means writing a `langs/<language>.py` extractor and a `BranchMap` -- the metrics engine and scanner are shared.
 
 ## Structural hashing
 

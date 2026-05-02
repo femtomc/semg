@@ -7,6 +7,8 @@ Metal Shading Language (.metal) is parsed as C++ since it shares the syntax.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from tree_sitter import Language, Parser
 from tree_sitter import Node as TSNode
 
@@ -192,6 +194,25 @@ _SKIP_PREFIXES = (
     "CG_",  # Apple frameworks
 )
 
+_CPP_HEADER_MARKERS = (
+    b"class ",
+    b"namespace ",
+    b"template ",
+    b"public:",
+    b"private:",
+    b"protected:",
+    b"virtual ",
+    b"override",
+    b"::",
+)
+
+
+@dataclass(frozen=True)
+class _FunctionName:
+    name: str
+    qualifiers: tuple[str, ...] = ()
+
+
 C_BRANCH_MAP = BranchMap(
     branch_nodes=frozenset(
         {
@@ -257,6 +278,7 @@ class _CExtractorBase:
                 "preproc_elif",
                 "linkage_specification",
                 "declaration_list",
+                "template_declaration",
             }
         )
         # Stack entries: (container_node, parent_name)
@@ -366,6 +388,36 @@ class _CExtractorBase:
             for child in body.children:
                 if child.type == "function_definition":
                     self._extract_function(child, source, qualified, qualified, file_path, nodes, edges)
+                elif child.type in ("declaration", "field_declaration"):
+                    self._extract_method_declaration(child, source, qualified, file_path, nodes, edges)
+
+    def _extract_method_declaration(
+        self,
+        node: TSNode,
+        source: bytes,
+        class_name: str,
+        file_path: str,
+        nodes: list[Node],
+        edges: list[Edge],
+    ) -> None:
+        func_name = self._get_function_name(node)
+        if func_name is None:
+            return
+        qualified = f"{class_name}.{func_name.name}"
+        nodes.append(
+            Node(
+                name=qualified,
+                type=NodeType.METHOD,
+                file=file_path,
+                line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                metadata={
+                    "content_hash": content_hash(source, node.start_byte, node.end_byte),
+                    "structure_hash": structure_hash(node),
+                },
+            )
+        )
+        edges.append(Edge(source=class_name, target=qualified, rel=RelType.CONTAINS))
 
     def _extract_typedef(
         self,
@@ -439,12 +491,17 @@ class _CExtractorBase:
         nodes: list[Node],
         edges: list[Edge],
     ) -> None:
-        func_name = self._get_function_name(node)
-        if func_name is None:
+        parsed_name = self._get_function_name(node)
+        if parsed_name is None:
             return
-        qualified = f"{parent_name}.{func_name}"
+        owner_name = class_name
+        containing_name = parent_name
+        if owner_name is None and parsed_name.qualifiers:
+            containing_name = ".".join([parent_name, *parsed_name.qualifiers])
+            owner_name = containing_name
+        qualified = f"{containing_name}.{parsed_name.name}"
 
-        is_method = class_name is not None
+        is_method = owner_name is not None
         meta = compute_metrics_and_hash(node, C_BRANCH_MAP)
 
         nodes.append(
@@ -461,16 +518,16 @@ class _CExtractorBase:
                 },
             )
         )
-        edges.append(Edge(source=parent_name, target=qualified, rel=RelType.CONTAINS))
+        edges.append(Edge(source=containing_name, target=qualified, rel=RelType.CONTAINS))
 
         # Extract calls
         body = _find_child(node, "compound_statement")
         if body is not None:
-            self._extract_calls(body, qualified, class_name, edges)
+            self._extract_calls(body, qualified, owner_name, edges)
 
-    def _get_function_name(self, node: TSNode) -> str | None:
+    def _get_function_name(self, node: TSNode) -> _FunctionName | None:
         """Extract function name from various declarator patterns."""
-        decl = _find_child(node, "function_declarator")
+        decl = _find_descendant(node, "function_declarator")
         if decl is None:
             # Try pointer_declarator -> function_declarator
             ptr = _find_child(node, "pointer_declarator")
@@ -478,16 +535,21 @@ class _CExtractorBase:
                 decl = _find_child(ptr, "function_declarator")
         if decl is None:
             return None
-        # Name can be identifier or field_identifier (for methods)
+        target = decl.child_by_field_name("declarator") or decl
+        qualified = _qualified_name_parts(target)
+        if len(qualified) > 1:
+            return _FunctionName(name=qualified[-1], qualifiers=tuple(qualified[:-1]))
+        if qualified:
+            return _FunctionName(name=qualified[0])
         name = _find_child(decl, "identifier") or _find_child(decl, "field_identifier")
-        if name is None:
-            # Could be a destructor or special function
-            destr = _find_child(decl, "destructor_name")
-            if destr is not None:
-                ident = _find_child(destr, "identifier")
-                return f"~{_node_text(ident)}" if ident is not None else None
-            return None
-        return _node_text(name)
+        if name is not None:
+            return _FunctionName(name=_node_text(name))
+        destr = _find_child(decl, "destructor_name")
+        if destr is not None:
+            ident = _find_child(destr, "identifier")
+            if ident is not None:
+                return _FunctionName(name=f"~{_node_text(ident)}")
+        return None
 
     def _extract_includes(
         self,
@@ -570,14 +632,26 @@ class _CExtractorBase:
             return None
 
         if func.type == "template_function":
-            name = _find_child(func, "identifier")
-            if name is not None:
-                n = _node_text(name)
-                if n in _BUILTINS or (n.isupper() and len(n) > 1):
-                    return None
-                return (n, False)
+            parts = _qualified_name_parts(func)
+            if parts:
+                return self._qualified_call_target(parts)
+
+        if func.type == "qualified_identifier":
+            parts = _qualified_name_parts(func)
+            if parts:
+                return self._qualified_call_target(parts)
 
         return None
+
+    def _qualified_call_target(self, parts: list[str]) -> tuple[str, bool] | None:
+        if not parts:
+            return None
+        if parts[0] in _BUILTINS:
+            return None
+        name = parts[-1]
+        if name in _BUILTINS or (name.isupper() and len(name) > 1):
+            return None
+        return (".".join(parts), False)
 
 
 def _find_child(node: TSNode, type_name: str) -> TSNode | None:
@@ -585,6 +659,42 @@ def _find_child(node: TSNode, type_name: str) -> TSNode | None:
         if child.type == type_name:
             return child
     return None
+
+
+def _find_descendant(node: TSNode, type_name: str) -> TSNode | None:
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == type_name:
+            return current
+        stack.extend(reversed(current.children))
+    return None
+
+
+def _qualified_name_parts(node: TSNode) -> list[str]:
+    if node.type in ("identifier", "field_identifier", "type_identifier", "namespace_identifier"):
+        return [_node_text(node)]
+    if node.type == "destructor_name":
+        ident = _find_child(node, "identifier")
+        return [f"~{_node_text(ident)}"] if ident is not None else []
+    if node.type == "template_function":
+        name = node.child_by_field_name("name") or _find_child(node, "identifier")
+        return _qualified_name_parts(name) if name is not None else []
+    if node.type == "qualified_identifier":
+        scope = node.child_by_field_name("scope")
+        name = node.child_by_field_name("name")
+        parts: list[str] = []
+        if scope is not None:
+            parts.extend(_qualified_name_parts(scope))
+        if name is not None:
+            parts.extend(_qualified_name_parts(name))
+        if parts:
+            return parts
+    return []
+
+
+def _looks_like_cpp_header(source: bytes) -> bool:
+    return any(marker in source for marker in _CPP_HEADER_MARKERS)
 
 
 # --- Concrete extractors ---
@@ -608,12 +718,19 @@ class CHeaderExtractor(_CExtractorBase):
     branch_map = C_BRANCH_MAP
 
     def __init__(self) -> None:
-        # Use C parser for .h files by default
         import tree_sitter_c as tsc
 
         self._parser = Parser(Language(tsc.language()))
+        try:
+            import tree_sitter_cpp as tscpp
+        except ImportError:
+            self._cpp_parser: Parser | None = None
+        else:
+            self._cpp_parser = Parser(Language(tscpp.language()))
 
     def extract(self, source: bytes, file_path: str, module_name: str) -> ExtractResult:
+        if self._cpp_parser is not None and _looks_like_cpp_header(source):
+            return self._extract(self._cpp_parser, source, file_path, module_name, is_cpp=True)
         return self._extract(self._parser, source, file_path, module_name, is_cpp=False)
 
 
